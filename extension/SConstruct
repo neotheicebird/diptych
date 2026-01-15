@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+import os
+import sys
+
+env = SConscript("godot-cpp/SConstruct")
+
+# For reference:
+# - target: editor, template_release, template_debug
+# - platform: macos, ios, linux, windows, android, web
+# - arch: x86_64, arm64
+
+# Basic configuration
+env.Append(CPPPATH=["src"])
+sources = Glob("src/*.cpp")
+
+if env["platform"] == "macos":
+    library = env.SharedLibrary(
+        "../bin/libdiptych.macos.editor.framework/libdiptych.macos.editor",
+        source=sources,
+    )
+elif env["platform"] == "ios":
+    # For iOS, we compile EVERYTHING into a single static library.
+    # This avoids the complexities of merging static archives.
+    
+    # We need the godot-cpp sources. 
+    # These include the core sources and the generated classes.
+    cpp_src = Glob("godot-cpp/src/*.cpp") + \
+              Glob("godot-cpp/src/core/*.cpp") + \
+              Glob("godot-cpp/src/variant/*.cpp") + \
+              Glob("godot-cpp/src/classes/*.cpp")
+    
+    # Generated sources
+    cpp_gen_src = Glob("godot-cpp/gen/src/classes/*.cpp") + \
+                  Glob("godot-cpp/gen/src/variant/*.cpp")
+    
+    all_sources = sources + cpp_src + cpp_gen_src
+    
+    library = env.StaticLibrary(
+        "../bin/libdiptych.ios.a",
+        source=all_sources,
+    )
+else:
+    # Fallback/Default
+    library = env.SharedLibrary(
+        "../bin/libdiptych{}{}".format(env["SUFFIX"], env["SHLIBSUFFIX"]),
+        source=sources,
+    )
+
+Default(library)

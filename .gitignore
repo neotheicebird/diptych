@@ -1,0 +1,29 @@
+# Godot-specific ignores
+.godot/
+/export_presets.cfg
+*.translation
+
+# Build artifacts
+bin/
+build/
+*.a
+*.framework
+*.o
+*.os
+*.dylib
+*.dSYM
+*.xcent
+
+# SCons
+.sconsign.dblite
+
+# IDEs
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+Build Diptych_*.txt
+
+# Temporary
+.gemini/
