@@ -7,7 +7,7 @@ v1.1
 iOS (iPhone only)
 
 ## UI Engine
-Godot (C#)
+Godot (GDScript + C++ GDExtension)
 
 ## Overview
 
@@ -199,17 +199,18 @@ Unavailable cameras are ignored gracefully.
 
 ## Rendering & Architecture
 
-- Godot handles:
+- Godot (GDScript) handles:
   - Rendering
   - Split composition
   - HUD
   - Input semantics
-- Native iOS layer handles:
-  - Camera access
+- C++ GDExtension (Native Bridge) handles:
+  - Camera access (AVFoundation bridge)
   - Permissions
   - Capture execution
+  - High-performance data marshalling
 
-The two layers communicate via a strict message boundary.
+The two layers communicate via a strict message boundary (Function calls & Signals).
 
 ---
 

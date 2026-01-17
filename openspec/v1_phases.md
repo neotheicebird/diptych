@@ -1,17 +1,18 @@
 Phase 1: Foundation & Core Pipeline
 
   1. Project Initialization & Architecture
-   * Goal: Establish the Godot (C#) project and the iOS native bridge structure.
+   * Goal: Establish the Godot project and the C++ GDExtension structure.
    * Tasks:
-       * Initialize Godot project with C# support.
-       * Configure iOS export settings (signing, permissions for Camera & Photo Library).
-       * Set up the message boundary/architecture for Godot <-> iOS Native communication.
+       * Initialize Godot project.
+       * Set up GDExtension with C++ (godot-cpp).
+       * Configure iOS export settings and SCons build system.
+       * Set up the message boundary/architecture for Godot <-> C++ <-> iOS Native communication.
 
   2. Native Camera Feed Integration
-   * Goal: Get a live camera feed rendering inside Godot.
+   * Goal: Get a live camera feed rendering inside Godot via GDExtension.
    * Tasks:
-       * Implement iOS native code to initialize AVCaptureSession.
-       * Create a mechanism to pass video frames (textures) from iOS to Godot.
+       * Implement iOS native code (Obj-C++) to initialize AVCaptureSession.
+       * Expose camera texture data to Godot through GDExtension (Texture2D/Image).
        * Handle camera permission requests on app launch.
 
   3. Split-Screen Layout (The "Canvas")

@@ -6,6 +6,7 @@
 // This allows our C++ class to be attached to the Scene Tree, process callbacks (like _process),
 // and interact with other nodes, just like a GDScript 'extends Node'.
 #include <godot_cpp/classes/node.hpp>
+#include "camera_manager.h"
 
 using namespace godot;
 
@@ -21,6 +22,9 @@ class NativeBridge : public Node {
 	// Arguments: ClassName, ParentClassName.
 	GDCLASS(NativeBridge, Node);
 
+private:
+	CameraManager* camera;
+
 protected:
 	// EDUCATIONAL:
 	// _bind_methods() is the central hub for exposing C++ methods to Godot (GDScript).
@@ -30,6 +34,14 @@ protected:
 public:
 	NativeBridge();
 	~NativeBridge();
+
+	// Godot Lifecycle
+	void _process(double delta) override;
+
+	// Camera API
+	void start_camera();
+	void stop_camera();
+	Ref<ImageTexture> get_camera_texture() const;
 
 	// Placeholder methods for future iOS integration.
 	void request_camera_permission();

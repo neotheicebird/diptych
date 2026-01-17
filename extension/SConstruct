@@ -14,31 +14,72 @@ env.Append(CPPPATH=["src"])
 sources = Glob("src/*.cpp")
 
 if env["platform"] == "macos":
+    # Add dummy implementation for macOS editor
+    sources.append("src/platform/dummy/camera_manager.cpp")
+    
     library = env.SharedLibrary(
         "../bin/libdiptych.macos.editor.framework/libdiptych.macos.editor",
         source=sources,
     )
 elif env["platform"] == "ios":
-    # For iOS, we compile EVERYTHING into a single static library.
-    # This avoids the complexities of merging static archives.
+    # iOS: Compile project sources into a static lib, then merge with godot-cpp lib
+    # We use libtool to merge the project library and the godot-cpp library.
     
-    # We need the godot-cpp sources. 
-    # These include the core sources and the generated classes.
-    cpp_src = Glob("godot-cpp/src/*.cpp") + \
-              Glob("godot-cpp/src/core/*.cpp") + \
-              Glob("godot-cpp/src/variant/*.cpp") + \
-              Glob("godot-cpp/src/classes/*.cpp")
+    ios_src = Glob("src/platform/ios/*.mm") + Glob("src/platform/ios/*.cpp")
     
-    # Generated sources
-    cpp_gen_src = Glob("godot-cpp/gen/src/classes/*.cpp") + \
-                  Glob("godot-cpp/gen/src/variant/*.cpp")
-    
-    all_sources = sources + cpp_src + cpp_gen_src
-    
-    library = env.StaticLibrary(
-        "../bin/libdiptych.ios.a",
-        source=all_sources,
+    # 1. Build project-only static library (intermediate)
+    project_lib = env.StaticLibrary(
+        "libdiptych_project", 
+        source=sources + ios_src,
     )
+    
+    # 2. Determine godot-cpp library path
+    # godot-cpp constructs suffix as: .<platform>.<target>[.<arch>]
+    # For iOS universal, it seems to append .universal
+    
+    # Based on "ls extension/godot-cpp/bin/" output:
+    # libgodot-cpp.ios.template_debug.universal.a
+    
+    if "SUFFIX" in env:
+        suffix = env["SUFFIX"]
+    else:
+        suffix = ".{}.{}".format(env["platform"], env["target"])
+
+    arch = env.get("arch", "")
+    if env["platform"] == "ios" and arch == "universal":
+        suffix += ".universal"
+    elif arch != "":
+        suffix += "." + arch
+        
+    godot_cpp_lib_name = "libgodot-cpp{}.a".format(suffix)
+    godot_cpp_lib_path = os.path.join("godot-cpp", "bin", godot_cpp_lib_name)
+    
+    target_lib_path = "../bin/libdiptych.ios.a"
+
+    def merge_libs(target, source, env):
+        # source[0] is libdiptych_project.a
+        project_lib_path = str(source[0])
+        final_lib_path = str(target[0])
+        
+        # Check for godot-cpp lib
+        if not os.path.exists(godot_cpp_lib_path):
+            print(f"Error: godot-cpp library not found at {godot_cpp_lib_path}")
+            return 1
+            
+        # libtool command
+        cmd = f"libtool -static -o {final_lib_path} {project_lib_path} {godot_cpp_lib_path}"
+        print(f"Merging libraries: {cmd}")
+        return os.system(cmd)
+
+    # Define the merge command
+    library = env.Command(
+        target_lib_path, 
+        project_lib, 
+        merge_libs
+    )
+    
+    # Explicitly depend on godot-cpp library so SCons knows to build it
+    env.Depends(library, godot_cpp_lib_path)
 else:
     # Fallback/Default
     library = env.SharedLibrary(

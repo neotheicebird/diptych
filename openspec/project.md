@@ -18,13 +18,13 @@ The split view is the primary canvas, not a mode.
 ## Tech Stack
 
 - Godot Engine (UI, rendering, interaction)
-- C# (Godot scripting)
-- Native iOS layer (camera access and capture)
+- C++ GDExtension (Native Bridge & Performance Critical Logic)
+- Native iOS layer (Objective-C++/Swift mixed via GDExtension)
 - AVFoundation (camera hardware control)
 - iOS Photos framework (saving captured images)
 
-Godot is used strictly for UI, rendering, and input handling.  
-All camera access and capture logic lives in the native iOS layer.
+Godot is used for UI, rendering, and high-level input handling.
+All camera access, heavy lifting, and platform-specific capture logic lives in the C++ GDExtension and native iOS layer.
 
 ---
 
@@ -45,18 +45,19 @@ Naming should reflect **intent**, not implementation detail.
 ### Architecture Patterns
 
 - **Strict separation of concerns**
-  - Native iOS layer:
+  - Native iOS layer (C++/Obj-C):
     - Camera access
     - Permissions
     - Capture execution
-  - Godot layer:
+  - Godot layer (GDScript):
     - Rendering
     - HUD and overlays
     - Input semantics and control zones
 
 - **Message-based boundary**
-  - Communication between Godot and native uses explicit commands and events
+  - Communication between Godot and native uses explicit commands and signals via GDExtension
   - No shared mutable state across layers
+  - `NativeBridge` singleton acts as the interface
 
 - **Split canvas as a constant**
   - UI layout does not branch by device capability
@@ -75,7 +76,7 @@ Naming should reflect **intent**, not implementation detail.
   - Dual-camera devices (primary target)
   - Single-camera devices (fallback only)
 
-Automated tests are optional but should not slow iteration.
+Automated tests (e.g., GDExtension unit tests) are optional but encouraged for core logic.
 
 ---
 

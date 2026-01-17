@@ -1,0 +1,11 @@
+[configuration]
+
+entry_symbol = "diptych_library_init"
+compatibility_minimum = "4.1"
+
+[libraries]
+
+macos.debug = "res://bin/libdiptych.macos.editor.framework"
+macos.release = "res://bin/libdiptych.macos.editor.framework"
+ios.debug = "res://bin/libdiptych.ios.a"
+ios.release = "res://bin/libdiptych.ios.a"
