@@ -38,11 +38,25 @@ void NativeBridge::stop_camera() {
 	}
 }
 
-Ref<ImageTexture> NativeBridge::get_camera_texture() const {
+Ref<ImageTexture> NativeBridge::get_texture_top() const {
 	if (camera) {
-		return camera->get_texture();
+		return camera->get_texture_top();
 	}
 	return Ref<ImageTexture>();
+}
+
+Ref<ImageTexture> NativeBridge::get_texture_bottom() const {
+	if (camera) {
+		return camera->get_texture_bottom();
+	}
+	return Ref<ImageTexture>();
+}
+
+bool NativeBridge::is_multicam_supported() const {
+	if (camera) {
+		return camera->is_multicam_supported();
+	}
+	return false;
 }
 
 void NativeBridge::request_camera_permission() {
@@ -70,7 +84,9 @@ void NativeBridge::capture_photo() {
 void NativeBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("start_camera"), &NativeBridge::start_camera);
 	ClassDB::bind_method(D_METHOD("stop_camera"), &NativeBridge::stop_camera);
-	ClassDB::bind_method(D_METHOD("get_camera_texture"), &NativeBridge::get_camera_texture);
+	ClassDB::bind_method(D_METHOD("get_texture_top"), &NativeBridge::get_texture_top);
+	ClassDB::bind_method(D_METHOD("get_texture_bottom"), &NativeBridge::get_texture_bottom);
+	ClassDB::bind_method(D_METHOD("is_multicam_supported"), &NativeBridge::is_multicam_supported);
 
 	ClassDB::bind_method(D_METHOD("request_camera_permission"), &NativeBridge::request_camera_permission);
 	ClassDB::bind_method(D_METHOD("initialize_camera"), &NativeBridge::initialize_camera);

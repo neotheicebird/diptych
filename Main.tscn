@@ -1,6 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://Main.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shutter"]
+bg_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 40
+corner_radius_top_right = 40
+corner_radius_bottom_right = 40
+corner_radius_bottom_left = 40
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -11,7 +18,100 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_script")
 
+[node name="MainLayout" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 0
+
+[node name="ZoneA" type="ColorRect" parent="MainLayout"]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+size_flags_vertical = 1
+color = Color(0, 0, 0, 1)
+
+[node name="StatusLabel" type="Label" parent="MainLayout/ZoneA"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "DIPTYCH // SYSTEM READY"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PanesContainer" type="VBoxContainer" parent="MainLayout"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 0
+
+[node name="ZoneB" type="Control" parent="MainLayout/PanesContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="TopPreview" type="TextureRect" parent="MainLayout/PanesContainer/ZoneB"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Divider" type="ColorRect" parent="MainLayout/PanesContainer"]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(1, 1, 1, 0.2)
+
+[node name="ZoneC" type="Control" parent="MainLayout/PanesContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BottomPreview" type="TextureRect" parent="MainLayout/PanesContainer/ZoneC"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ZoneD" type="ColorRect" parent="MainLayout"]
+custom_minimum_size = Vector2(0, 200)
+layout_mode = 2
+size_flags_vertical = 1
+color = Color(0, 0, 0, 1)
+
+[node name="ShutterButton" type="Button" parent="MainLayout/ZoneD"]
+custom_minimum_size = Vector2(70, 70)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -35.0
+offset_top = -35.0
+offset_right = 35.0
+offset_bottom = 35.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_shutter")
+theme_override_styles/hover = SubResource("StyleBoxFlat_shutter")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_shutter")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_shutter")
+theme_override_styles/focus = SubResource("StyleBoxFlat_shutter")
+
 [node name="Label" type="Label" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5

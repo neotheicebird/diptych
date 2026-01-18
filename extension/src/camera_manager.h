@@ -15,7 +15,9 @@ public:
     void start();
     void stop();
     void update();
-    Ref<ImageTexture> get_texture() const;
+    Ref<ImageTexture> get_texture_top() const;
+    Ref<ImageTexture> get_texture_bottom() const;
+    bool is_multicam_supported() const;
 
 private:
     Impl* impl;

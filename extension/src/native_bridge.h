@@ -41,7 +41,9 @@ public:
 	// Camera API
 	void start_camera();
 	void stop_camera();
-	Ref<ImageTexture> get_camera_texture() const;
+	Ref<ImageTexture> get_texture_top() const;
+	Ref<ImageTexture> get_texture_bottom() const;
+	bool is_multicam_supported() const;
 
 	// Placeholder methods for future iOS integration.
 	void request_camera_permission();
