@@ -3,7 +3,6 @@ extends Control
 # EDUCATIONAL:
 # Godot uses a Node-based scene tree. We can reference nodes using the '$' shorthand
 # or the get_node() function. Using unique names or clear paths is best practice.
-@onready var status_label = $MainLayout/ZoneA/StatusLabel
 @onready var top_preview = $MainLayout/PanesContainer/ZoneB/TopPreview
 @onready var bottom_preview = $MainLayout/PanesContainer/ZoneC/BottomPreview
 
@@ -15,7 +14,6 @@ func _ready():
 	# Here, GDScript (UI) calls into GDExtension (C++) via the 'Native' singleton.
 	# This singleton is registered in C++ and made available to Godot as an Autoload.
 	if Native:
-		status_label.text = "INITIALIZING NATIVE CAMERA..."
 		Native.start_camera()
 		
 		# EDUCATIONAL:
@@ -23,20 +21,14 @@ func _ready():
 		# This allows for seamless high-performance data sharing between C++ and UI.
 		var tex_top = Native.get_texture_top()
 		var tex_bottom = Native.get_texture_bottom()
-		var is_multi = Native.is_multicam_supported()
 		
 		if tex_top and tex_bottom:
 			top_preview.texture = tex_top
 			bottom_preview.texture = tex_bottom
-			
-			if is_multi:
-				status_label.text = "DIPTYCH // DUAL STREAM ACTIVE"
-			else:
-				status_label.text = "DIPTYCH // SINGLE STREAM (FALLBACK)"
 		else:
-			status_label.text = "ERROR: CAMERA TEXTURE NULL"
+			push_error("ERROR: CAMERA TEXTURE NULL")
 	else:
-		status_label.text = "ERROR: NATIVE BRIDGE NOT FOUND"
+		push_error("ERROR: NATIVE BRIDGE NOT FOUND")
 
 # EDUCATIONAL:
 # _process(delta) runs every frame. We can use it for UI updates that depend on 

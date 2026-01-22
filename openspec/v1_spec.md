@@ -77,9 +77,9 @@ No attempt is made to imply multiple perspectives.
 
 ### Default Layout
 - Portrait orientation
-- Vertical split:
-  - Left pane
-  - Right pane
+- Horizontal split:
+  - Top viewer
+  - Bottom viewer
 - Equal size
 - Thin, subtle divider
 
@@ -103,29 +103,21 @@ No control requires navigating away from the preview.
 
 ## Control Zones (Textual Layout)
 
-### Zone A — Status / Info Band (Top)
-- Height: ~8–10% of screen
-- Contents:
-  - Camera labels (when applicable)
-  - Camera picker control
-- No gestures
-- No persistent animation
-
----
-
-### Zone B — Left Camera Pane
+### Zone B — Top Camera Viewer
 - Full interactive preview
 - Tap:
   - Focus + exposure
-- Vertical zoom strip near inner edge:
-  - Drag up/down for zoom
-  - Ruler-style ticks
-  - Numeric zoom indicator appears only during interaction
+- Pinch:
+  - Zoom interaction
+- Control Area (Bottom 5–10% of viewer):
+  - Camera Label: Display selected camera (e.g., Wide, Ultra, Tele) in gray/white text.
+  - Position: Right-aligned within the area.
+  - Interaction: Tappable to change camera selection for this viewer.
 
 ---
 
-### Zone C — Right Camera Pane
-- Mirrors Zone B exactly
+### Zone C — Bottom Camera Viewer
+- Mirrors Zone B exactly (including independent Control Area)
 - Symmetry is required for muscle memory
 
 ---
@@ -150,12 +142,12 @@ No control requires navigating away from the preview.
 ## Zoom Behavior
 
 - Analog (continuous)
-- Drag gesture on vertical zoom strip
+- Pinch-to-zoom gesture on each viewer
 - Light haptic feedback at major zoom milestones
 
 ### Zoom Linking
-- Dual-cam devices: independent per pane
-- Single-cam devices: linked across panes
+- Dual-cam devices: independent per viewer
+- Single-cam devices: linked across viewers
 
 ---
 
@@ -171,11 +163,10 @@ No control requires navigating away from the preview.
 
 ## Camera Selection
 
-- Small, unobtrusive HUD control
-- Allows selecting which physical camera maps to each pane
+- Small, unobtrusive label in each viewer's control area
+- Allows selecting which physical camera maps to that viewer
 - Interaction:
-  - Tap to cycle
-  - Optional drag/radial gesture
+  - Tap label to cycle through available cameras
 - No automatic camera switching
 
 Unavailable cameras are ignored gracefully.

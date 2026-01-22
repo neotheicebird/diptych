@@ -313,4 +313,143 @@ bool CameraManager::is_multicam_supported() const {
     return impl->is_multicam;
 }
 
+Dictionary CameraManager::get_available_devices() const {
+    Dictionary devices;
+    
+    // Physical device types we are interested in
+    NSArray<AVCaptureDeviceType> *types = @[
+        AVCaptureDeviceTypeBuiltInWideAngleCamera,
+        AVCaptureDeviceTypeBuiltInTelephotoCamera,
+        AVCaptureDeviceTypeBuiltInUltraWideCamera
+    ];
+    
+    AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession discoverySessionWithDeviceTypes:types mediaType:AVMediaTypeVideo position:AVCaptureDevicePositionUnspecified];
+    
+    for (AVCaptureDevice *device in discovery.devices) {
+        String id = String([device.uniqueID UTF8String]);
+        String name = String([device.localizedName UTF8String]);
+        devices[id] = name;
+    }
+    
+    return devices;
+}
+
+void CameraManager::set_device(int view_index, String device_id) {
+    NSString *uuid = [NSString stringWithUTF8String:device_id.utf8().get_data()];
+    
+    dispatch_async(impl->cameraQueue, ^{
+        [impl->session beginConfiguration];
+        
+        // 1. Identify Target Output and Current Input
+        AVCaptureVideoDataOutput *targetOutput = (view_index == 0) ? impl->topOutput : impl->bottomOutput;
+        AVCaptureDeviceInput *currentInput = (view_index == 0) ? impl->topInput : impl->bottomInput;
+        
+        // In fallback mode, we only manipulate the primary input/output logic
+        if (!impl->is_multicam) {
+            // view_index 0 and 1 both rely on topInput/topOutput effectively for the source
+            // But wait, in start(), topOutput is linked to topInput.
+            // set_device should change the input that feeds the views.
+            targetOutput = impl->topOutput;
+            currentInput = impl->topInput;
+        }
+
+        // 2. Check if requested device is already the current input for this view
+        if (currentInput && [currentInput.device.uniqueID isEqualToString:uuid]) {
+            [impl->session commitConfiguration];
+            return; 
+        }
+
+        // 3. Find or Create New Input
+        AVCaptureDevice *newDevice = [AVCaptureDevice deviceWithUniqueID:uuid];
+        if (!newDevice) {
+             UtilityFunctions::print("CameraManager: Device not found ", device_id);
+             [impl->session commitConfiguration];
+             return;
+        }
+
+        AVCaptureDeviceInput *newInput = nil;
+        // Check if this device is already being used by the session
+        for (AVCaptureDeviceInput *input in impl->session.inputs) {
+            if ([input.device.uniqueID isEqualToString:uuid]) {
+                newInput = input;
+                break;
+            }
+        }
+        
+        if (!newInput) {
+            NSError *error = nil;
+            newInput = [AVCaptureDeviceInput deviceInputWithDevice:newDevice error:&error];
+            if (error || !newInput) {
+                UtilityFunctions::print("CameraManager: Could not create input for device.");
+                [impl->session commitConfiguration];
+                return;
+            }
+        }
+
+        // 4. Swap Inputs
+        // Check if old input is in use by the OTHER view (only relevant in MultiCam)
+        bool oldInputInUseByOther = false;
+        if (impl->is_multicam) {
+            AVCaptureDeviceInput *otherInput = (view_index == 0) ? impl->bottomInput : impl->topInput;
+            if (otherInput == currentInput) {
+                oldInputInUseByOther = true;
+            }
+        }
+        
+        if (currentInput && !oldInputInUseByOther) {
+             [impl->session removeInput:currentInput];
+        }
+        
+        if (![impl->session.inputs containsObject:newInput]) {
+            if ([impl->session canAddInput:newInput]) {
+                [impl->session addInput:newInput];
+            } else {
+                 UtilityFunctions::print("CameraManager: Cannot add new input.");
+                 // Try to restore old input?
+                 if (currentInput && !oldInputInUseByOther && [impl->session canAddInput:currentInput]) {
+                     [impl->session addInput:currentInput];
+                 }
+                 [impl->session commitConfiguration];
+                 return;
+            }
+        }
+        
+        // Update Pointers
+        if (view_index == 0) impl->topInput = newInput;
+        else if (impl->is_multicam) impl->bottomInput = newInput;
+        else impl->topInput = newInput;
+        
+        // 5. Manage Connections
+        // In MultiCam, we need to ensure the new input is connected to the target output.
+        if (impl->is_multicam) {
+            // Remove existing connection for this output if strictly needed?
+            // Or just add new connection.
+            AVCaptureConnection *existingConn = [targetOutput connectionWithMediaType:AVMediaTypeVideo];
+            if (existingConn) {
+                [impl->session removeConnection:existingConn];
+            }
+            
+            AVCaptureConnection *newConn = [[AVCaptureConnection alloc] initWithInputPorts:newInput.ports output:targetOutput];
+            if ([impl->session canAddConnection:newConn]) {
+                [impl->session addConnection:newConn];
+            } else {
+                UtilityFunctions::print("CameraManager: Failed to add connection for new input.");
+            }
+        }
+        
+        // 6. Orientation & Mirroring
+        AVCaptureConnection *conn = [targetOutput connectionWithMediaType:AVMediaTypeVideo];
+        if (conn) {
+            if (conn.isVideoOrientationSupported) {
+                conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+            }
+            if (conn.isVideoMirroringSupported) {
+                 conn.videoMirrored = (newDevice.position == AVCaptureDevicePositionFront);
+            }
+        }
+        
+        [impl->session commitConfiguration];
+    });
+}
+
 

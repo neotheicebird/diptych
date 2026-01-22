@@ -59,6 +59,19 @@ bool NativeBridge::is_multicam_supported() const {
 	return false;
 }
 
+Dictionary NativeBridge::get_available_devices() const {
+	if (camera) {
+		return camera->get_available_devices();
+	}
+	return Dictionary();
+}
+
+void NativeBridge::set_device(int view_index, String device_id) {
+	if (camera) {
+		camera->set_device(view_index, device_id);
+	}
+}
+
 void NativeBridge::request_camera_permission() {
 	UtilityFunctions::print("NativeBridge (C++): Requesting camera permission...");
 	// TODO: Implement native iOS permission request using Objective-C++ (AVFoundation)
@@ -87,6 +100,9 @@ void NativeBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_texture_top"), &NativeBridge::get_texture_top);
 	ClassDB::bind_method(D_METHOD("get_texture_bottom"), &NativeBridge::get_texture_bottom);
 	ClassDB::bind_method(D_METHOD("is_multicam_supported"), &NativeBridge::is_multicam_supported);
+	
+	ClassDB::bind_method(D_METHOD("get_available_devices"), &NativeBridge::get_available_devices);
+	ClassDB::bind_method(D_METHOD("set_device", "view_index", "device_id"), &NativeBridge::set_device);
 
 	ClassDB::bind_method(D_METHOD("request_camera_permission"), &NativeBridge::request_camera_permission);
 	ClassDB::bind_method(D_METHOD("initialize_camera"), &NativeBridge::initialize_camera);

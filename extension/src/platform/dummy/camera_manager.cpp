@@ -44,3 +44,25 @@ Ref<ImageTexture> CameraManager::get_texture_bottom() const {
 bool CameraManager::is_multicam_supported() const {
     return false; // Dummy implementation
 }
+
+Dictionary CameraManager::get_available_devices() const {
+    Dictionary d;
+    d["mock_wide"] = "Mock Wide Camera";
+    d["mock_ultra"] = "Mock Ultra Wide Camera";
+    d["mock_front"] = "Mock Front Camera";
+    return d;
+}
+
+void CameraManager::set_device(int view_index, String device_id) {
+    // Just mock behavior: fill texture with a color based on device_id
+    Color c = Color(1, 1, 1, 1);
+    if (device_id == "mock_wide") c = Color(1, 0, 0, 1); // Red
+    else if (device_id == "mock_ultra") c = Color(0, 1, 0, 1); // Green
+    else if (device_id == "mock_front") c = Color(0, 0, 1, 1); // Blue
+    
+    Ref<Image> img = Image::create(128, 128, false, Image::FORMAT_RGBA8);
+    img->fill(c);
+    
+    if (view_index == 0) impl->texture_top->set_image(img);
+    else impl->texture_bottom->set_image(img);
+}

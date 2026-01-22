@@ -1,6 +1,7 @@
 [gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://Main.gd" id="1_script"]
+[ext_resource type="Script" path="res://CameraSelector.gd" id="2_script"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shutter"]
 bg_color = Color(1, 1, 1, 1)
@@ -27,25 +28,6 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 0
 
-[node name="ZoneA" type="ColorRect" parent="MainLayout"]
-custom_minimum_size = Vector2(0, 80)
-layout_mode = 2
-size_flags_vertical = 1
-color = Color(0, 0, 0, 1)
-
-[node name="StatusLabel" type="Label" parent="MainLayout/ZoneA"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 14
-text = "DIPTYCH // SYSTEM READY"
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="PanesContainer" type="VBoxContainer" parent="MainLayout"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -65,6 +47,29 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 6
 
+[node name="ControlOverlay" type="MarginContainer" parent="MainLayout/PanesContainer/ZoneB"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_right = 20
+script = ExtResource("2_script")
+
+[node name="CameraLabel" type="Label" parent="MainLayout/PanesContainer/ZoneB/ControlOverlay"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_override_colors/font_color = Color(1, 1, 1, 0.8)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_outline_size = 1
+theme_override_font_sizes/font_size = 12
+text = "WIDE"
+horizontal_alignment = 2
+vertical_alignment = 1
+
 [node name="Divider" type="ColorRect" parent="MainLayout/PanesContainer"]
 custom_minimum_size = Vector2(0, 1)
 layout_mode = 2
@@ -83,6 +88,30 @@ grow_horizontal = 2
 grow_vertical = 2
 expand_mode = 1
 stretch_mode = 6
+
+[node name="ControlOverlay" type="MarginContainer" parent="MainLayout/PanesContainer/ZoneC"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -80.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/margin_right = 20
+script = ExtResource("2_script")
+view_index = 1
+
+[node name="CameraLabel" type="Label" parent="MainLayout/PanesContainer/ZoneC/ControlOverlay"]
+layout_mode = 2
+size_flags_horizontal = 8
+theme_override_colors/font_color = Color(1, 1, 1, 0.8)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_outline_size = 1
+theme_override_font_sizes/font_size = 12
+text = "ULTRA"
+horizontal_alignment = 2
+vertical_alignment = 1
 
 [node name="ZoneD" type="ColorRect" parent="MainLayout"]
 custom_minimum_size = Vector2(0, 200)

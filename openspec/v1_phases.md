@@ -18,9 +18,9 @@ Phase 1: Foundation & Core Pipeline
   3. Split-Screen Layout (The "Canvas")
    * Goal: Implement the visual structure of the app.
    * Tasks:
-       * Create the UI layout in Godot with two equal vertical panes (Zone B & Zone C).
-       * Implement Zone A (Top Status) and Zone D (Bottom Control) placeholders.
-       * Draw the subtle divider between panes.
+       * Create the UI layout in Godot with two equal horizontal viewers (Zone B & Zone C).
+       * Implement Zone D (Bottom Control) placeholder.
+       * Draw the subtle divider between viewers.
 
   Phase 2: Camera Logic & Interaction
 
@@ -31,16 +31,16 @@ Phase 1: Foundation & Core Pipeline
        * Fallback: Detect single-cam devices and route the single feed to both Godot textures.
        * UI: Update the divider visual based on the mode (linked vs. independent).
 
-  5. Camera Selection HUD (Zone A)
-   * Goal: Allow users to assign cameras to panes.
+  5. Camera Selection Overlay
+   * Goal: Allow users to assign cameras to viewers.
    * Tasks:
-       * Implement the UI control in Zone A.
-       * Connect UI actions to the native layer to switch physical input devices for the specific pane.
+       * Implement the UI control label in the bottom 5-10% of each viewer.
+       * Connect UI actions (tapping the label) to the native layer to switch physical input devices for the specific viewer.
 
   6. Interactive Controls (Zoom & Focus)
    * Goal: Implement the "Game HUD" interactions.
    * Tasks:
-       * Zoom: Create vertical drag strips on the edges of Zone B & C. Map drag delta to native zoom factor.
+       * Zoom: Implement pinch-to-zoom gestures on Zone B & C. Map gesture scale to native zoom factor.
        * Focus: Implement tap-to-focus (convert screen coordinates to camera sensor point of interest).
        * Linking: Ensure controls affect one or both cameras based on the active mode (Dual vs. Fallback).
 

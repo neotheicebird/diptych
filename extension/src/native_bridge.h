@@ -44,6 +44,9 @@ public:
 	Ref<ImageTexture> get_texture_top() const;
 	Ref<ImageTexture> get_texture_bottom() const;
 	bool is_multicam_supported() const;
+	
+	Dictionary get_available_devices() const;
+	void set_device(int view_index, String device_id);
 
 	// Placeholder methods for future iOS integration.
 	void request_camera_permission();
