@@ -47,6 +47,11 @@ public:
 	
 	Dictionary get_available_devices() const;
 	void set_device(int view_index, String device_id);
+    
+    // Interactive Controls
+    void set_zoom_factor(int view_index, float zoom_factor);
+    void set_focus_point(int view_index, float x, float y);
+    void trigger_haptic_impact();
 
 	// Placeholder methods for future iOS integration.
 	void request_camera_permission();

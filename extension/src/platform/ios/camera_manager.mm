@@ -1,6 +1,7 @@
 #include "../../camera_manager.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <UIKit/UIKit.h>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -58,6 +59,8 @@ struct CameraManager::Impl {
     std::mutex buffer_mutex;
     
     bool is_multicam = false;
+    
+    std::function<void()> permission_callback;
 
     /**
      * process_sample_buffer
@@ -270,6 +273,10 @@ void CameraManager::start() {
                 [impl->session commitConfiguration];
                 [impl->session startRunning];
                 UtilityFunctions::print("CameraManager: Session started.");
+                
+                if (impl->permission_callback) {
+                    impl->permission_callback();
+                }
             });
         } else {
              UtilityFunctions::print("CameraManager: Access denied.");
@@ -450,6 +457,91 @@ void CameraManager::set_device(int view_index, String device_id) {
         
         [impl->session commitConfiguration];
     });
+}
+
+void CameraManager::set_zoom_factor(int view_index, float zoom_factor) {
+    if (!impl->session) return;
+    
+    dispatch_async(impl->cameraQueue, ^{
+        AVCaptureDeviceInput* input = (view_index == 0) ? impl->topInput : impl->bottomInput;
+        if (!impl->is_multicam) input = impl->topInput;
+        
+        if (!input) return;
+        AVCaptureDevice *device = input.device;
+        
+        NSError *error = nil;
+        if ([device lockForConfiguration:&error]) {
+            CGFloat maxZoom = device.activeFormat.videoMaxZoomFactor;
+            // Cap at reasonable 10x or device max, whichever is lower, to prevent extreme digital noise?
+            // Spec doesn't strictly limit, but 10x is a safe practical limit for UI gestures.
+            // Actually, let's respect device max but maybe the UI should clamp.
+            // We'll just clamp to device limits here.
+            CGFloat safeZoom = MIN(MAX(zoom_factor, 1.0), maxZoom);
+            
+            [device setVideoZoomFactor:safeZoom];
+            [device unlockForConfiguration];
+        }
+    });
+}
+
+void CameraManager::set_focus_point(int view_index, float x, float y) {
+    if (!impl->session) return;
+    
+    // Dispatch to camera queue to access device safely
+    dispatch_async(impl->cameraQueue, ^{
+        AVCaptureDeviceInput* input = (view_index == 0) ? impl->topInput : impl->bottomInput;
+        if (!impl->is_multicam) input = impl->topInput;
+        
+        if (!input) return;
+        AVCaptureDevice *device = input.device;
+        
+        // Coordinate Conversion for Portrait Orientation
+        // setFocusPointOfInterest requires Sensor Coordinates (0..1, 0..1)
+        // We assume the app is locked to Portrait.
+        CGPoint point;
+        if (device.position == AVCaptureDevicePositionFront) {
+            // Front Camera (Portrait, Mirrored usually)
+            // Screen X -> Sensor Y
+            // Screen Y -> Sensor X
+            // Mirrored X means 1-x? Or is it already handled?
+            // Standard Front Portrait mapping:
+            point = CGPointMake(y, x); 
+        } else {
+            // Back Camera (Portrait)
+            // Screen (0,0) Top-Left -> Sensor (0.5, ?)
+            // Standard Back Portrait mapping:
+            point = CGPointMake(y, 1.0 - x);
+        }
+
+        NSError *error = nil;
+        if ([device lockForConfiguration:&error]) {
+            // Focus
+            if ([device isFocusPointOfInterestSupported] && [device isFocusModeSupported:AVCaptureFocusModeAutoFocus]) {
+                [device setFocusPointOfInterest:point];
+                [device setFocusMode:AVCaptureFocusModeAutoFocus];
+            }
+            
+            // Exposure
+            if ([device isExposurePointOfInterestSupported] && [device isExposureModeSupported:AVCaptureExposureModeAutoExpose]) {
+                [device setExposurePointOfInterest:point];
+                [device setExposureMode:AVCaptureExposureModeAutoExpose];
+            }
+            
+            [device unlockForConfiguration];
+        }
+    });
+}
+
+void CameraManager::trigger_haptic_impact() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIImpactFeedbackGenerator *generator = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [generator prepare];
+        [generator impactOccurred];
+    });
+}
+
+void CameraManager::set_permission_callback(std::function<void()> callback) {
+    impl->permission_callback = callback;
 }
 
 

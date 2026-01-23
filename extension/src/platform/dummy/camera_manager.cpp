@@ -66,3 +66,19 @@ void CameraManager::set_device(int view_index, String device_id) {
     if (view_index == 0) impl->texture_top->set_image(img);
     else impl->texture_bottom->set_image(img);
 }
+
+void CameraManager::set_zoom_factor(int view_index, float zoom_factor) {
+    // Dummy: do nothing
+}
+
+void CameraManager::set_focus_point(int view_index, float x, float y) {
+    // Dummy: do nothing
+}
+
+void CameraManager::trigger_haptic_impact() {
+    // Dummy: do nothing
+}
+
+void CameraManager::set_permission_callback(std::function<void()> callback) {
+    // Dummy: do nothing
+}
