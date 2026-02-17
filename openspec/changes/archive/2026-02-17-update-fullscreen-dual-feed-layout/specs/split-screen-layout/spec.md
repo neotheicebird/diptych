@@ -1,8 +1,4 @@
-# split-screen-layout Specification
-
-## Purpose
-TBD - created by archiving change implement-split-screen-layout. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
 ### Requirement: Horizontal Split Canvas
 The application interface SHALL be divided horizontally into two equal-sized panes (Top and Bottom) that together occupy the full available screen height for camera viewing.
 
@@ -26,22 +22,6 @@ The application SHALL organize the split-screen surface into two viewer zones (T
 - **THEN** the dual feed surface consumes the full camera viewing area.
 - **AND** each viewer occupies approximately half of that viewing area.
 
-### Requirement: Visual Divider
-A subtle visual divider SHALL demarcate the horizontal boundary between the two camera panes.
-
-#### Scenario: Divider Visibility
-- **GIVEN** the two camera panes are adjacent vertically
-- **WHEN** the UI is drawn
-- **THEN** a thin horizontal line or separator is visible between them.
-
-### Requirement: Minimalist Styling
-The UI SHALL use a high-contrast, minimalist color palette (White/Light Gray) without gradients or decorative animations.
-
-#### Scenario: Background Color
-- **GIVEN** the application starts
-- **WHEN** the UI backgrounds are rendered
-- **THEN** they appear as solid flat colors (e.g., white or light gray).
-
 ### Requirement: Viewer Control Overlay
 Each camera viewer SHALL contain a persistent control overlay area positioned at its bottom edge.
 
@@ -59,4 +39,3 @@ Each camera viewer SHALL contain a persistent control overlay area positioned at
 - **GIVEN** the Camera Label is visible
 - **WHEN** the user taps the label
 - **THEN** the viewer cycles to the next available camera device.
-
