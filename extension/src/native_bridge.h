@@ -6,6 +6,8 @@
 // This allows our C++ class to be attached to the Scene Tree, process callbacks (like _process),
 // and interact with other nodes, just like a GDScript 'extends Node'.
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include "camera_manager.h"
 
 using namespace godot;
@@ -57,6 +59,13 @@ public:
 	void request_camera_permission();
 	void initialize_camera();
 	void capture_photo();
+
+	// EDUCATIONAL:
+	// These methods are the public API for the new split-image capture flow.
+	// Godot calls these, and the native layer performs the heavy lifting.
+	void capture_split_image();
+	void set_composite_layout(float viewer_width, float viewer_height, float separator_thickness, Color separator_color);
+	void open_photo_library();
 };
 
 #endif // NATIVE_BRIDGE_H

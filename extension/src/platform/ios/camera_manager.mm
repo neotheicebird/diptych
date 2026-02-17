@@ -1,6 +1,7 @@
 #include "../../camera_manager.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <Photos/Photos.h>
 #import <UIKit/UIKit.h>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -21,6 +22,19 @@ using namespace godot;
 @end
 
 /**
+ * PhotoCaptureDelegate (Objective-C)
+ *
+ * EDUCATIONAL:
+ * AVCapturePhotoOutput delivers still-image results asynchronously.
+ * We keep a tiny delegate object per stream so we can associate the result
+ * with the correct top/bottom capture.
+ */
+@interface PhotoCaptureDelegate : NSObject <AVCapturePhotoCaptureDelegate>
+@property (nonatomic, assign) CameraManager::Impl *cppImpl;
+@property (nonatomic, assign) NSInteger streamId;
+@end
+
+/**
  * CameraManager::Impl
  * 
  * We use the PIMPL (Pointer to IMPLementation) idiom to hide Objective-C types
@@ -33,15 +47,22 @@ struct CameraManager::Impl {
     // Top Stream (Back Camera / Wide) -> Zone B
     AVCaptureDeviceInput *topInput;
     AVCaptureVideoDataOutput *topOutput;
+    AVCapturePhotoOutput *topPhotoOutput;
     
     // Bottom Stream (Front Camera / Ultra Wide) -> Zone C
     AVCaptureDeviceInput *bottomInput;
     AVCaptureVideoDataOutput *bottomOutput;
+    AVCapturePhotoOutput *bottomPhotoOutput;
     
     CameraDelegate *delegate;
+    PhotoCaptureDelegate *topPhotoDelegate;
+    PhotoCaptureDelegate *bottomPhotoDelegate;
     
     // A dedicated serial dispatch queue for processing camera frames.
     dispatch_queue_t cameraQueue;
+    
+    // A dedicated serial dispatch queue for photo capture + compositing work.
+    dispatch_queue_t photoQueue;
     
     // Stream Data Container
     struct StreamData {
@@ -58,9 +79,37 @@ struct CameraManager::Impl {
     // Thread safety is critical because frames arrive on a background queue
     std::mutex buffer_mutex;
     
+    // Thread safety for still capture state
+    std::mutex capture_mutex;
+    
+    // Thread safety for layout inputs coming from Godot
+    std::mutex layout_mutex;
+    
     bool is_multicam = false;
     
     std::function<void()> permission_callback;
+    
+    // EDUCATIONAL:
+    // Layout values are provided by Godot so the compositor can match the UI exactly.
+    float viewer_width = 1.0f;
+    float viewer_height = 1.0f;
+    float separator_thickness = 1.0f;
+    float separator_r = 1.0f;
+    float separator_g = 1.0f;
+    float separator_b = 1.0f;
+    float separator_a = 0.2f;
+    
+    // EDUCATIONAL:
+    // Capture lifecycle state for coordinating top/bottom still images.
+    // We hold strong references so the images stay alive until compositing finishes.
+    bool is_capturing = false;
+    int pending_photo_count = 0;
+    __strong UIImage *top_photo = nil;
+    __strong UIImage *bottom_photo = nil;
+    
+    // Callbacks back into Godot (through NativeBridge).
+    std::function<void()> image_save_started_callback;
+    std::function<void(PackedByteArray)> image_save_finished_callback;
 
     /**
      * process_sample_buffer
@@ -138,6 +187,17 @@ struct CameraManager::Impl {
         // Unlock the buffer so the OS can reuse the memory for the next frame
         CVPixelBufferUnlockBaseAddress(imageBuffer, kCVPixelBufferLock_ReadOnly);
     }
+    
+    /**
+     * EDUCATIONAL:
+     * Photo capture helpers for WYSIWYG split image compositing.
+     */
+    void capture_split_image();
+    void handle_captured_photo(UIImage *image, int stream_id);
+    UIImage *crop_to_aspect(UIImage *image, CGFloat target_aspect);
+    UIImage *compose_split_image(UIImage *top_image, UIImage *bottom_image);
+    PackedByteArray create_thumbnail_bytes(UIImage *image);
+    void save_to_library(UIImage *image);
 };
 
 @implementation CameraDelegate
@@ -154,11 +214,45 @@ struct CameraManager::Impl {
 }
 @end
 
+@implementation PhotoCaptureDelegate
+- (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingPhoto:(AVCapturePhoto *)photo error:(NSError *)error {
+    // EDUCATIONAL:
+    // AVCapturePhoto delivers a high-quality still image.
+    // We turn it into a UIImage so the compositor can crop and stitch.
+    if (!self.cppImpl) {
+        return;
+    }
+    
+    if (error) {
+        self.cppImpl->handle_captured_photo(nil, (int)self.streamId);
+        return;
+    }
+    
+    NSData *data = [photo fileDataRepresentation];
+    if (!data) {
+        self.cppImpl->handle_captured_photo(nil, (int)self.streamId);
+        return;
+    }
+    
+    UIImage *image = [UIImage imageWithData:data];
+    if (!image) {
+        self.cppImpl->handle_captured_photo(nil, (int)self.streamId);
+        return;
+    }
+    
+    self.cppImpl->handle_captured_photo(image, (int)self.streamId);
+}
+@end
+
 CameraManager::CameraManager() {
     impl = new Impl();
     
     // Create the serial queue for camera processing
     impl->cameraQueue = dispatch_queue_create("com.diptych.cameraQueue", DISPATCH_QUEUE_SERIAL);
+    // EDUCATIONAL:
+    // Still capture and compositing can be heavier than live video.
+    // We keep a separate queue so photo work never blocks video updates.
+    impl->photoQueue = dispatch_queue_create("com.diptych.photoQueue", DISPATCH_QUEUE_SERIAL);
     
     // Initialize the Godot textures
     // Top Stream
@@ -173,11 +267,25 @@ CameraManager::CameraManager() {
     
     impl->delegate = [[CameraDelegate alloc] init];
     impl->delegate.cppImpl = impl;
+
+    // EDUCATIONAL:
+    // We keep one photo delegate per stream so each still image is routed correctly.
+    impl->topPhotoDelegate = [[PhotoCaptureDelegate alloc] init];
+    impl->topPhotoDelegate.cppImpl = impl;
+    impl->topPhotoDelegate.streamId = 0;
+    
+    impl->bottomPhotoDelegate = [[PhotoCaptureDelegate alloc] init];
+    impl->bottomPhotoDelegate.cppImpl = impl;
+    impl->bottomPhotoDelegate.streamId = 1;
 }
 
 CameraManager::~CameraManager() {
     stop();
     impl->delegate = nil;
+    // EDUCATIONAL:
+    // Releasing Objective-C delegates avoids dangling callbacks after shutdown.
+    impl->topPhotoDelegate = nil;
+    impl->bottomPhotoDelegate = nil;
     impl->session = nil;
     delete impl;
 }
@@ -234,6 +342,25 @@ void CameraManager::start() {
                             conn.videoOrientation = AVCaptureVideoOrientationPortrait;
                         }
                     }
+                    
+                    // EDUCATIONAL:
+                    // A dedicated photo output lets us request high-resolution stills for compositing.
+                    AVCapturePhotoOutput *backPhotoOutput = [[AVCapturePhotoOutput alloc] init];
+                    if ([impl->session canAddOutput:backPhotoOutput]) {
+                        [impl->session addOutput:backPhotoOutput];
+                        impl->topPhotoOutput = backPhotoOutput;
+                        // EDUCATIONAL:
+                        // Request high-resolution capture when available; the system will clamp if unsupported.
+                        backPhotoOutput.highResolutionCaptureEnabled = YES;
+                        
+                        AVCaptureConnection *photoConn = [backPhotoOutput connectionWithMediaType:AVMediaTypeVideo];
+                        if (photoConn.isVideoOrientationSupported) {
+                            photoConn.videoOrientation = AVCaptureVideoOrientationPortrait;
+                        }
+                        if (photoConn.isVideoMirroringSupported) {
+                            photoConn.videoMirrored = NO;
+                        }
+                    }
                 } else {
                     UtilityFunctions::print("CameraManager: Failed to configure Back Camera.");
                 }
@@ -265,6 +392,25 @@ void CameraManager::start() {
                                 conn.videoMirrored = YES;
                             }
                         }
+                        
+                        // EDUCATIONAL:
+                        // The front stream needs its own photo output for WYSIWYG dual capture.
+                        AVCapturePhotoOutput *frontPhotoOutput = [[AVCapturePhotoOutput alloc] init];
+                        if ([impl->session canAddOutput:frontPhotoOutput]) {
+                            [impl->session addOutput:frontPhotoOutput];
+                            impl->bottomPhotoOutput = frontPhotoOutput;
+                            // EDUCATIONAL:
+                            // Request high-resolution capture when available; the system will clamp if unsupported.
+                            frontPhotoOutput.highResolutionCaptureEnabled = YES;
+                            
+                            AVCaptureConnection *photoConn = [frontPhotoOutput connectionWithMediaType:AVMediaTypeVideo];
+                            if (photoConn.isVideoOrientationSupported) {
+                                photoConn.videoOrientation = AVCaptureVideoOrientationPortrait;
+                            }
+                            if (photoConn.isVideoMirroringSupported) {
+                                photoConn.videoMirrored = YES;
+                            }
+                        }
                     } else {
                         UtilityFunctions::print("CameraManager: Failed to configure Front Camera for MultiCam.");
                     }
@@ -280,6 +426,290 @@ void CameraManager::start() {
             });
         } else {
              UtilityFunctions::print("CameraManager: Access denied.");
+        }
+    }];
+}
+
+void CameraManager::Impl::capture_split_image() {
+    // EDUCATIONAL:
+    // Still capture is asynchronous. We dispatch onto a dedicated queue and
+    // guard with a mutex so only one capture pipeline runs at a time.
+    dispatch_async(photoQueue, ^{
+        bool capture_bottom = false;
+        
+        {
+            std::lock_guard<std::mutex> lock(capture_mutex);
+            if (!session || is_capturing || !topPhotoOutput) {
+                return;
+            }
+            
+            is_capturing = true;
+            top_photo = nil;
+            bottom_photo = nil;
+            pending_photo_count = (is_multicam && bottomPhotoOutput) ? 2 : 1;
+            capture_bottom = (pending_photo_count == 2);
+        }
+        
+        if (image_save_started_callback) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                image_save_started_callback();
+            });
+        }
+        
+        // EDUCATIONAL:
+        // Photo settings request high quality stills; the system clamps to supported limits.
+        AVCapturePhotoSettings *topSettings = [AVCapturePhotoSettings photoSettings];
+        topSettings.flashMode = AVCaptureFlashModeOff;
+        topSettings.highResolutionPhotoEnabled = YES;
+        if (@available(iOS 13.0, *)) {
+            topSettings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
+        }
+        
+        [topPhotoOutput capturePhotoWithSettings:topSettings delegate:topPhotoDelegate];
+        
+        if (capture_bottom) {
+            AVCapturePhotoSettings *bottomSettings = [AVCapturePhotoSettings photoSettings];
+            bottomSettings.flashMode = AVCaptureFlashModeOff;
+            bottomSettings.highResolutionPhotoEnabled = YES;
+            if (@available(iOS 13.0, *)) {
+                bottomSettings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
+            }
+            
+            [bottomPhotoOutput capturePhotoWithSettings:bottomSettings delegate:bottomPhotoDelegate];
+        }
+    });
+}
+
+void CameraManager::Impl::handle_captured_photo(UIImage *image, int stream_id) {
+    UIImage *top_image = nil;
+    UIImage *bottom_image = nil;
+    bool ready_to_compose = false;
+    
+    {
+        std::lock_guard<std::mutex> lock(capture_mutex);
+        if (!is_capturing) {
+            return;
+        }
+        
+        if (!image) {
+            // EDUCATIONAL:
+            // If capture fails, reset the state and notify the UI to stop the spinner.
+            is_capturing = false;
+            pending_photo_count = 0;
+            
+            if (image_save_finished_callback) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    image_save_finished_callback(PackedByteArray());
+                });
+            }
+            return;
+        }
+        
+        if (stream_id == 0) {
+            top_photo = image;
+        } else {
+            bottom_photo = image;
+        }
+        
+        pending_photo_count = MAX(pending_photo_count - 1, 0);
+        if (pending_photo_count == 0) {
+            top_image = top_photo;
+            bottom_image = bottom_photo ? bottom_photo : top_photo;
+            ready_to_compose = (top_image != nil);
+        }
+    }
+    
+    if (ready_to_compose) {
+        dispatch_async(photoQueue, ^{
+            UIImage *composed = compose_split_image(top_image, bottom_image);
+            save_to_library(composed);
+        });
+    }
+}
+
+UIImage *CameraManager::Impl::crop_to_aspect(UIImage *image, CGFloat target_aspect) {
+    if (!image || target_aspect <= 0.0f) {
+        return image;
+    }
+    
+    CGImageRef source = image.CGImage;
+    if (!source) {
+        return image;
+    }
+    
+    size_t width = CGImageGetWidth(source);
+    size_t height = CGImageGetHeight(source);
+    if (width == 0 || height == 0) {
+        return image;
+    }
+    
+    CGFloat image_aspect = (CGFloat)width / (CGFloat)height;
+    CGRect crop_rect = CGRectZero;
+    
+    if (image_aspect > target_aspect) {
+        CGFloat new_width = height * target_aspect;
+        CGFloat x = (width - new_width) * 0.5f;
+        crop_rect = CGRectMake(x, 0.0f, new_width, height);
+    } else {
+        CGFloat new_height = width / target_aspect;
+        CGFloat y = (height - new_height) * 0.5f;
+        crop_rect = CGRectMake(0.0f, y, width, new_height);
+    }
+    
+    CGImageRef cropped = CGImageCreateWithImageInRect(source, crop_rect);
+    if (!cropped) {
+        return image;
+    }
+    
+    UIImage *result = [UIImage imageWithCGImage:cropped scale:1.0 orientation:image.imageOrientation];
+    CGImageRelease(cropped);
+    return result;
+}
+
+UIImage *CameraManager::Impl::compose_split_image(UIImage *top_image, UIImage *bottom_image) {
+    if (!top_image) {
+        return nil;
+    }
+    
+    float view_width = 1.0f;
+    float view_height = 1.0f;
+    float separator_size = 1.0f;
+    float sep_r = 1.0f;
+    float sep_g = 1.0f;
+    float sep_b = 1.0f;
+    float sep_a = 0.2f;
+    
+    {
+        std::lock_guard<std::mutex> lock(layout_mutex);
+        view_width = viewer_width;
+        view_height = viewer_height;
+        separator_size = separator_thickness;
+        sep_r = separator_r;
+        sep_g = separator_g;
+        sep_b = separator_b;
+        sep_a = separator_a;
+    }
+    
+    CGFloat target_aspect = (view_width > 0.0f && view_height > 0.0f) ? (view_width / view_height) : 0.0f;
+    if (target_aspect <= 0.0f) {
+        CGSize size = top_image.size;
+        target_aspect = (size.height > 0.0f) ? (size.width / size.height) : 1.0f;
+    }
+    
+    UIImage *top_crop = crop_to_aspect(top_image, target_aspect);
+    UIImage *bottom_crop = crop_to_aspect(bottom_image ? bottom_image : top_image, target_aspect);
+    
+    size_t top_width = CGImageGetWidth(top_crop.CGImage);
+    size_t bottom_width = CGImageGetWidth(bottom_crop.CGImage);
+    size_t output_width = MIN(top_width, bottom_width);
+    if (output_width == 0) {
+        return nil;
+    }
+    
+    size_t half_height = (size_t)round((double)output_width / (double)target_aspect);
+    if (half_height == 0) {
+        return nil;
+    }
+    
+    float scale = (view_width > 0.0f) ? (output_width / view_width) : 1.0f;
+    size_t separator_px = (size_t)MAX(1.0f, round(separator_size * scale));
+    size_t output_height = (half_height * 2) + separator_px;
+    
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1.0;
+    format.opaque = YES;
+    
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(output_width, output_height) format:format];
+    UIColor *separator_color = [UIColor colorWithRed:sep_r green:sep_g blue:sep_b alpha:sep_a];
+    
+    UIImage *composed = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        // EDUCATIONAL:
+        // Draw top, separator, and bottom in a single pass to avoid extra copies.
+        CGRect top_rect = CGRectMake(0.0f, 0.0f, output_width, half_height);
+        CGRect separator_rect = CGRectMake(0.0f, half_height, output_width, separator_px);
+        CGRect bottom_rect = CGRectMake(0.0f, half_height + separator_px, output_width, half_height);
+        
+        [[UIColor blackColor] setFill];
+        UIRectFill(CGRectMake(0.0f, 0.0f, output_width, output_height));
+        
+        [top_crop drawInRect:top_rect];
+        [separator_color setFill];
+        UIRectFill(separator_rect);
+        [bottom_crop drawInRect:bottom_rect];
+    }];
+    
+    return composed;
+}
+
+PackedByteArray CameraManager::Impl::create_thumbnail_bytes(UIImage *image) {
+    PackedByteArray bytes;
+    if (!image) {
+        return bytes;
+    }
+    
+    const CGFloat target_size = 256.0f;
+    
+    UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
+    format.scale = 1.0;
+    format.opaque = YES;
+    
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(target_size, target_size) format:format];
+    CGSize image_size = image.size;
+    if (image_size.width <= 0.0f || image_size.height <= 0.0f) {
+        return bytes;
+    }
+    
+    CGFloat scale = MAX(target_size / image_size.width, target_size / image_size.height);
+    CGSize draw_size = CGSizeMake(image_size.width * scale, image_size.height * scale);
+    CGRect draw_rect = CGRectMake((target_size - draw_size.width) * 0.5f, (target_size - draw_size.height) * 0.5f, draw_size.width, draw_size.height);
+    
+    UIImage *thumb = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) {
+        [image drawInRect:draw_rect];
+    }];
+    
+    NSData *png_data = UIImagePNGRepresentation(thumb);
+    if (!png_data) {
+        return bytes;
+    }
+    
+    bytes.resize((int64_t)png_data.length);
+    memcpy(bytes.ptrw(), png_data.bytes, png_data.length);
+    return bytes;
+}
+
+void CameraManager::Impl::save_to_library(UIImage *image) {
+    // EDUCATIONAL:
+    // Saving to Photos runs through PHPhotoLibrary and finishes asynchronously.
+    if (!image) {
+        if (image_save_finished_callback) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                image_save_finished_callback(PackedByteArray());
+            });
+        }
+        std::lock_guard<std::mutex> lock(capture_mutex);
+        is_capturing = false;
+        pending_photo_count = 0;
+        return;
+    }
+    
+    PHPhotoLibrary *library = [PHPhotoLibrary sharedPhotoLibrary];
+    [library performChanges:^{
+        [PHAssetChangeRequest creationRequestForAssetFromImage:image];
+    } completionHandler:^(BOOL success, NSError *error) {
+        PackedByteArray thumbnail_bytes = create_thumbnail_bytes(image);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (image_save_finished_callback) {
+                image_save_finished_callback(thumbnail_bytes);
+            }
+        });
+        
+        std::lock_guard<std::mutex> lock(capture_mutex);
+        is_capturing = false;
+        pending_photo_count = 0;
+        
+        if (!success && error) {
+            UtilityFunctions::print("CameraManager: Photo save failed.");
         }
     }];
 }
@@ -540,8 +970,56 @@ void CameraManager::trigger_haptic_impact() {
     });
 }
 
+void CameraManager::capture_split_image() {
+    if (impl) {
+        impl->capture_split_image();
+    }
+}
+
+void CameraManager::set_composite_layout(float viewer_width, float viewer_height, float separator_thickness, Color separator_color) {
+    if (!impl) {
+        return;
+    }
+    
+    // EDUCATIONAL:
+    // We lock layout updates so the compositor can read consistent values.
+    std::lock_guard<std::mutex> lock(impl->layout_mutex);
+    impl->viewer_width = MAX(viewer_width, 1.0f);
+    impl->viewer_height = MAX(viewer_height, 1.0f);
+    impl->separator_thickness = MAX(separator_thickness, 1.0f);
+    impl->separator_r = separator_color.r;
+    impl->separator_g = separator_color.g;
+    impl->separator_b = separator_color.b;
+    impl->separator_a = separator_color.a;
+}
+
+void CameraManager::set_image_save_callbacks(std::function<void()> on_save_started, std::function<void(PackedByteArray)> on_save_finished) {
+    if (!impl) {
+        return;
+    }
+    
+    // EDUCATIONAL:
+    // We store these callbacks so the Objective-C layer can notify Godot on save state.
+    impl->image_save_started_callback = on_save_started;
+    impl->image_save_finished_callback = on_save_finished;
+}
+
+void CameraManager::open_photo_library() {
+    // EDUCATIONAL:
+    // Opening the Photos app must occur on the main thread.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSURL *url = [NSURL URLWithString:@"photos-redirect://"];
+        if (!url) {
+            return;
+        }
+        
+        UIApplication *app = [UIApplication sharedApplication];
+        // EDUCATIONAL:
+        // We call openURL directly to avoid requiring LSApplicationQueriesSchemes for canOpenURL.
+        [app openURL:url options:@{} completionHandler:nil];
+    });
+}
+
 void CameraManager::set_permission_callback(std::function<void()> callback) {
     impl->permission_callback = callback;
 }
-
-

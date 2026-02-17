@@ -10,6 +10,17 @@ NativeBridge::NativeBridge() {
     camera->set_permission_callback([this]() {
         call_deferred("emit_signal", "permission_granted");
     });
+	// EDUCATIONAL:
+	// We forward native photo save state to Godot via signals.
+	// call_deferred keeps thread hops safe because native callbacks can arrive off the main thread.
+	camera->set_image_save_callbacks(
+		[this]() {
+			call_deferred("emit_signal", "image_save_started");
+		},
+		[this](PackedByteArray thumbnail_bytes) {
+			call_deferred("emit_signal", "image_save_finished", thumbnail_bytes);
+		}
+	);
 	set_process(true);
 	// EDUCATIONAL:
 	// UtilityFunctions::print() is the C++ equivalent of GDScript's print().
@@ -108,7 +119,32 @@ void NativeBridge::initialize_camera() {
 
 void NativeBridge::capture_photo() {
 	UtilityFunctions::print("NativeBridge (C++): Capturing photo...");
-	// TODO: Trigger native camera capture
+	// EDUCATIONAL:
+	// This legacy placeholder now routes to the new split capture method.
+	capture_split_image();
+}
+
+void NativeBridge::capture_split_image() {
+	UtilityFunctions::print("NativeBridge (C++): Capturing split image...");
+	if (camera) {
+		camera->capture_split_image();
+	}
+}
+
+void NativeBridge::set_composite_layout(float viewer_width, float viewer_height, float separator_thickness, Color separator_color) {
+	// EDUCATIONAL:
+	// The native compositor needs layout metrics so the saved image matches the on-screen split view.
+	if (camera) {
+		camera->set_composite_layout(viewer_width, viewer_height, separator_thickness, separator_color);
+	}
+}
+
+void NativeBridge::open_photo_library() {
+	// EDUCATIONAL:
+	// We delegate to the iOS layer to open the system Photos app.
+	if (camera) {
+		camera->open_photo_library();
+	}
 }
 
 // EDUCATIONAL:
@@ -132,6 +168,11 @@ void NativeBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("request_camera_permission"), &NativeBridge::request_camera_permission);
 	ClassDB::bind_method(D_METHOD("initialize_camera"), &NativeBridge::initialize_camera);
 	ClassDB::bind_method(D_METHOD("capture_photo"), &NativeBridge::capture_photo);
+	ClassDB::bind_method(D_METHOD("capture_split_image"), &NativeBridge::capture_split_image);
+	ClassDB::bind_method(D_METHOD("set_composite_layout", "viewer_width", "viewer_height", "separator_thickness", "separator_color"), &NativeBridge::set_composite_layout);
+	ClassDB::bind_method(D_METHOD("open_photo_library"), &NativeBridge::open_photo_library);
     
     ADD_SIGNAL(MethodInfo("permission_granted"));
+	ADD_SIGNAL(MethodInfo("image_save_started"));
+	ADD_SIGNAL(MethodInfo("image_save_finished", PropertyInfo(Variant::PACKED_BYTE_ARRAY, "thumbnail_data")));
 }
