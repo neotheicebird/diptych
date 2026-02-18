@@ -1,9 +1,11 @@
-[gd_scene load_steps=4 format=3 uid="uid://b8j5q6w7y8z9"]
+[gd_scene load_steps=10 format=3 uid="uid://b8j5q6w7y8z9"]
 
 [ext_resource type="Script" path="res://Main.gd" id="1_script"]
 [ext_resource type="Script" path="res://CameraSelector.gd" id="2_script"]
 [ext_resource type="Script" path="res://CameraControlManager.gd" id="3_script"]
 [ext_resource type="Script" path="res://ViewerInput.gd" id="4_script"]
+[ext_resource type="Texture2D" path="res://assets/icons/square.svg" id="5_thumb_idle"]
+[ext_resource type="Texture2D" path="res://assets/icons/square_processing.svg" id="6_thumb_processing"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
 bg_color = Color(0.6, 0.6, 0.6, 0)
@@ -12,6 +14,25 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(1, 1, 1, 0.8)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shutter_fill"]
+bg_color = Color(0.968627, 0.980392, 0.988235, 1)
+corner_radius_top_left = 91
+corner_radius_top_right = 91
+corner_radius_bottom_right = 91
+corner_radius_bottom_left = 91
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_shutter_ring"]
+bg_color = Color(1, 1, 1, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(1, 1, 1, 0.95)
+corner_radius_top_left = 111
+corner_radius_top_right = 111
+corner_radius_bottom_right = 111
+corner_radius_bottom_left = 111
 
 [node name="Main" type="Control"]
 layout_mode = 3
@@ -25,8 +46,10 @@ script = ExtResource("1_script")
 [node name="CameraControlManager" type="Node" parent="."]
 script = ExtResource("3_script")
 
-[node name="MainLayout" type="VBoxContainer" parent="."]
-layout_mode = 1
+[node name="CameraFeedLayer" type="CanvasLayer" parent="."]
+layer = 0
+
+[node name="MainLayout" type="VBoxContainer" parent="CameraFeedLayer"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -34,17 +57,17 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 0
 
-[node name="PanesContainer" type="VBoxContainer" parent="MainLayout"]
+[node name="PanesContainer" type="VBoxContainer" parent="CameraFeedLayer/MainLayout"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 0
 
-[node name="ZoneB" type="Control" parent="MainLayout/PanesContainer"]
+[node name="ZoneB" type="Control" parent="CameraFeedLayer/MainLayout/PanesContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("4_script")
 
-[node name="TopPreview" type="TextureRect" parent="MainLayout/PanesContainer/ZoneB"]
+[node name="TopPreview" type="TextureRect" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -54,7 +77,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 6
 
-[node name="FocusIndicator" type="Panel" parent="MainLayout/PanesContainer/ZoneB"]
+[node name="FocusIndicator" type="Panel" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB"]
 visible = false
 layout_mode = 0
 offset_right = 100.0
@@ -62,7 +85,7 @@ offset_bottom = 100.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_focus")
 
-[node name="ControlOverlay" type="MarginContainer" parent="MainLayout/PanesContainer/ZoneB"]
+[node name="ControlOverlay" type="MarginContainer" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB"]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -74,7 +97,7 @@ grow_vertical = 0
 theme_override_constants/margin_right = 20
 script = ExtResource("2_script")
 
-[node name="CameraLabel" type="Label" parent="MainLayout/PanesContainer/ZoneB/ControlOverlay"]
+[node name="CameraLabel" type="Label" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB/ControlOverlay"]
 layout_mode = 2
 size_flags_horizontal = 8
 theme_override_colors/font_color = Color(1, 1, 1, 0.8)
@@ -85,18 +108,18 @@ text = "WIDE"
 horizontal_alignment = 2
 vertical_alignment = 1
 
-[node name="Divider" type="ColorRect" parent="MainLayout/PanesContainer"]
+[node name="Divider" type="ColorRect" parent="CameraFeedLayer/MainLayout/PanesContainer"]
 custom_minimum_size = Vector2(0, 1)
 layout_mode = 2
 color = Color(1, 1, 1, 0.2)
 
-[node name="ZoneC" type="Control" parent="MainLayout/PanesContainer"]
+[node name="ZoneC" type="Control" parent="CameraFeedLayer/MainLayout/PanesContainer"]
 layout_mode = 2
 size_flags_vertical = 3
 script = ExtResource("4_script")
 view_index = 1
 
-[node name="BottomPreview" type="TextureRect" parent="MainLayout/PanesContainer/ZoneC"]
+[node name="BottomPreview" type="TextureRect" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -106,7 +129,7 @@ grow_vertical = 2
 expand_mode = 1
 stretch_mode = 6
 
-[node name="FocusIndicator" type="Panel" parent="MainLayout/PanesContainer/ZoneC"]
+[node name="FocusIndicator" type="Panel" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC"]
 visible = false
 layout_mode = 0
 offset_right = 100.0
@@ -114,7 +137,7 @@ offset_bottom = 100.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_focus")
 
-[node name="ControlOverlay" type="MarginContainer" parent="MainLayout/PanesContainer/ZoneC"]
+[node name="ControlOverlay" type="MarginContainer" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC"]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
@@ -127,7 +150,7 @@ theme_override_constants/margin_right = 20
 script = ExtResource("2_script")
 view_index = 1
 
-[node name="CameraLabel" type="Label" parent="MainLayout/PanesContainer/ZoneC/ControlOverlay"]
+[node name="CameraLabel" type="Label" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC/ControlOverlay"]
 layout_mode = 2
 size_flags_horizontal = 8
 theme_override_colors/font_color = Color(1, 1, 1, 0.8)
@@ -137,6 +160,84 @@ theme_override_font_sizes/font_size = 12
 text = "ULTRA"
 horizontal_alignment = 2
 vertical_alignment = 1
+
+[node name="HUDLayer" type="CanvasLayer" parent="."]
+layer = 1
+
+[node name="HUDRoot" type="Control" parent="HUDLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ThumbnailControl" type="TextureRect" parent="HUDLayer/HUDRoot"]
+custom_minimum_size = Vector2(181, 181)
+offset_right = 181.0
+offset_bottom = 181.0
+mouse_filter = 2
+texture = ExtResource("5_thumb_idle")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ShutterControl" type="Control" parent="HUDLayer/HUDRoot"]
+custom_minimum_size = Vector2(221, 221)
+offset_right = 221.0
+offset_bottom = 221.0
+mouse_filter = 2
+
+[node name="ShutterRing" type="Panel" parent="HUDLayer/HUDRoot/ShutterControl"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_shutter_ring")
+
+[node name="ShutterButton" type="Button" parent="HUDLayer/HUDRoot/ShutterControl"]
+custom_minimum_size = Vector2(181, 181)
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -90.5
+offset_top = -90.5
+offset_right = 90.5
+offset_bottom = 90.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_shutter_fill")
+theme_override_styles/hover = SubResource("StyleBoxFlat_shutter_fill")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_shutter_fill")
+theme_override_styles/disabled = SubResource("StyleBoxFlat_shutter_fill")
+theme_override_styles/focus = SubResource("StyleBoxFlat_shutter_fill")
+text = ""
+
+[node name="FXLayer" type="CanvasLayer" parent="."]
+layer = 2
+
+[node name="FXRoot" type="Control" parent="FXLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="FlashOverlay" type="ColorRect" parent="FXLayer/FXRoot"]
+modulate = Color(1, 1, 1, 0)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 1)
 
 [node name="Label" type="Label" parent="."]
 visible = false
