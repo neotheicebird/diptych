@@ -9,14 +9,16 @@
 - [x] 2.3 Trigger lightweight haptic feedback on shutter press only if an existing bridge/API call is already available.
 - [x] 2.4 Add bottom-left thumbnail control using `res://assets/icons/square.svg` at ~1 cm size.
 - [x] 2.5 Align shutter and thumbnail controls so their center points are vertically aligned.
+- [x] 2.6 Add bottom-right layout control using `res://assets/icons/layout.svg` and align it to the same HUD control row.
+- [x] 2.7 Position HUD control row at ~10% from the bottom with ~5% horizontal margins for side icons.
 
 ## 3. FX Layer Behavior
 - [x] 3.1 Add top-layer white flash overlay node.
 - [x] 3.2 Trigger short flash animation on shutter press.
-- [x] 3.3 Switch thumbnail icon to `res://assets/icons/square_processing.svg` during processing animation state after shutter press.
+- [x] 3.3 Add thumbnail processing feedback animation (pulse tween) with a minimum 560ms visible duration after shutter press.
 
 ## 4. Validation
-- [ ] 4.1 Verify camera feeds remain fully visible in base layer and not occluded by opaque HUD background.
-- [ ] 4.2 Verify shutter press animation, thumbnail state swap, and flash FX all trigger from one shutter tap.
-- [ ] 4.3 Verify zoom/focus interactions still work on camera panes after layering changes.
-- [ ] 4.4 Verify no photo capture or photo-app navigation is triggered by shutter/thumbnail in this change.
+- [x] 4.1 Verify camera feeds remain fully visible in base layer and not occluded by opaque HUD background.
+- [x] 4.2 Verify shutter press animation, thumbnail processing pulse, and flash FX all trigger from one shutter tap.
+- [x] 4.3 Verify zoom/focus interactions still work on camera panes after layering changes.
+- [x] 4.4 Verify no photo capture or photo-app navigation is triggered by shutter/thumbnail in this change.

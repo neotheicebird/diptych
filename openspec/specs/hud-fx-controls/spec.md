@@ -1,4 +1,8 @@
-## ADDED Requirements
+# hud-fx-controls Specification
+
+## Purpose
+TBD - created by archiving change add-layered-hud-fx-controls. Update Purpose after archive.
+## Requirements
 ### Requirement: HUD Shutter Control
 The system SHALL provide a bottom-center shutter control in the HUD overlay as a mid-gray circular button with approximately 1 cm diameter (~181 px reference), surrounded by a 1 mm transparent gap and a 0.1 mm outer ring.
 
@@ -29,17 +33,23 @@ The system SHALL provide a short white screen-flash effect from the FX overlay l
 - **THEN** the FX layer displays a brief white flash animation.
 - **AND** the flash does not permanently obscure HUD or camera feeds.
 
-### Requirement: Thumbnail HUD Control and Processing State
-The system SHALL show a bottom-left thumbnail control in HUD using `res://assets/icons/square.svg` with approximately 1 cm side length, vertically aligned by center with the shutter control, and temporarily switch to `res://assets/icons/square_processing.svg` after shutter tap.
+### Requirement: HUD Side Controls Row
+The system SHALL show side controls on the HUD row: a bottom-left thumbnail control using `res://assets/icons/square.svg` and a bottom-right layout control using `res://assets/icons/layout.svg`, both with approximately 1 cm side length and vertically center-aligned with the shutter control.
 
-#### Scenario: Thumbnail Placement
+#### Scenario: Side Control Placement
 - **GIVEN** HUD controls are rendered
 - **WHEN** the layout is computed
-- **THEN** the thumbnail appears near the bottom-left edge.
-- **AND** its center Y coordinate matches the shutter button center Y coordinate.
+- **THEN** the thumbnail appears near the bottom-left edge and the layout icon appears near the bottom-right edge.
+- **AND** both side controls have center Y coordinates matching the shutter button center Y coordinate.
+- **AND** the side controls use approximately 5% horizontal screen margins.
+- **AND** the control row baseline is approximately 10% from the bottom edge.
 
-#### Scenario: Processing Icon Swap
+### Requirement: Thumbnail Processing Feedback
+The system SHALL provide thumbnail processing feedback after shutter tap via a short pulse animation with at least 560 ms visible duration, without invoking capture or photo-library actions.
+
+#### Scenario: Processing Feedback Pulse
 - **GIVEN** the idle thumbnail icon is visible
 - **WHEN** shutter is tapped
-- **THEN** the thumbnail icon switches to `res://assets/icons/square_processing.svg` for a short processing-state animation window.
+- **THEN** the thumbnail enters a processing visual pulse state for at least 560 ms.
 - **AND** image capture and photo-library navigation are not invoked by this behavior.
+

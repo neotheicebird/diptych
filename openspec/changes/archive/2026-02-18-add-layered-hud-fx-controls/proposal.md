@@ -9,7 +9,8 @@ The project is moving to a layered UI model where controls and effects are compo
 - HUD overlay layer (shutter + thumbnail controls)
 - FX overlay layer (flash animation)
 - Add a HUD shutter control at bottom-center with defined physical sizing, ring/gap styling, and press animation.
-- Add a bottom-left thumbnail control using `res://assets/icons/square.svg` with processing-state swap to `res://assets/icons/square_processing.svg` when shutter is pressed.
+- Add a bottom-left thumbnail control using `res://assets/icons/square.svg` plus processing feedback animation (pulse) when shutter is pressed.
+- Add a bottom-right layout icon control using `res://assets/icons/layout.svg`.
 - Add a white flash FX on shutter press from the top-most FX layer.
 - Keep this change scoped to UI behavior only (no image capture or photo-library navigation).
 - Add optional haptic trigger on shutter press when available through existing platform bridge APIs; do not introduce heavy new native plumbing in this change.

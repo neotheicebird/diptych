@@ -5,7 +5,7 @@
 [ext_resource type="Script" path="res://CameraControlManager.gd" id="3_script"]
 [ext_resource type="Script" path="res://ViewerInput.gd" id="4_script"]
 [ext_resource type="Texture2D" path="res://assets/icons/square.svg" id="5_thumb_idle"]
-[ext_resource type="Texture2D" path="res://assets/icons/square_processing.svg" id="6_thumb_processing"]
+[ext_resource type="Texture2D" path="res://assets/icons/layout.svg" id="6_layout_icon"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
 bg_color = Color(0.6, 0.6, 0.6, 0)
@@ -178,6 +178,15 @@ offset_right = 181.0
 offset_bottom = 181.0
 mouse_filter = 2
 texture = ExtResource("5_thumb_idle")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="LayoutControl" type="TextureRect" parent="HUDLayer/HUDRoot"]
+custom_minimum_size = Vector2(181, 181)
+offset_right = 181.0
+offset_bottom = 181.0
+mouse_filter = 2
+texture = ExtResource("6_layout_icon")
 expand_mode = 1
 stretch_mode = 6
 
