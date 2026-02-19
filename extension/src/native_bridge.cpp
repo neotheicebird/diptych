@@ -7,9 +7,15 @@ using namespace godot;
 
 NativeBridge::NativeBridge() {
 	camera = new CameraManager();
-    camera->set_permission_callback([this]() {
-        call_deferred("emit_signal", "permission_granted");
-    });
+	camera->set_permission_callback([this]() {
+		call_deferred("emit_signal", "permission_granted");
+	});
+	camera->set_image_save_started_callback([this]() {
+		call_deferred("emit_signal", "image_save_started");
+	});
+	camera->set_image_save_finished_callback([this](const PackedByteArray &thumbnail_data) {
+		call_deferred("emit_signal", "image_save_finished", thumbnail_data);
+	});
 	set_process(true);
 	// EDUCATIONAL:
 	// UtilityFunctions::print() is the C++ equivalent of GDScript's print().
@@ -76,21 +82,21 @@ void NativeBridge::set_device(int view_index, String device_id) {
 }
 
 void NativeBridge::set_zoom_factor(int view_index, float zoom_factor) {
-    if (camera) {
-        camera->set_zoom_factor(view_index, zoom_factor);
-    }
+	if (camera) {
+		camera->set_zoom_factor(view_index, zoom_factor);
+	}
 }
 
 void NativeBridge::set_focus_point(int view_index, float x, float y) {
-    if (camera) {
-        camera->set_focus_point(view_index, x, y);
-    }
+	if (camera) {
+		camera->set_focus_point(view_index, x, y);
+	}
 }
 
 void NativeBridge::trigger_haptic_impact() {
-    if (camera) {
-        camera->trigger_haptic_impact();
-    }
+	if (camera) {
+		camera->trigger_haptic_impact();
+	}
 }
 
 void NativeBridge::request_camera_permission() {
@@ -108,7 +114,27 @@ void NativeBridge::initialize_camera() {
 
 void NativeBridge::capture_photo() {
 	UtilityFunctions::print("NativeBridge (C++): Capturing photo...");
-	// TODO: Trigger native camera capture
+	if (camera) {
+		camera->capture_layout_image(Dictionary());
+	}
+}
+
+void NativeBridge::set_layout_snapshot(Dictionary layout_snapshot) {
+	if (camera) {
+		camera->set_layout_snapshot(layout_snapshot);
+	}
+}
+
+void NativeBridge::capture_layout_image(Dictionary layout_snapshot) {
+	if (camera) {
+		camera->capture_layout_image(layout_snapshot);
+	}
+}
+
+void NativeBridge::open_photo_library() {
+	if (camera) {
+		camera->open_photo_library();
+	}
 }
 
 // EDUCATIONAL:
@@ -125,13 +151,18 @@ void NativeBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_available_devices"), &NativeBridge::get_available_devices);
 	ClassDB::bind_method(D_METHOD("set_device", "view_index", "device_id"), &NativeBridge::set_device);
     
-    ClassDB::bind_method(D_METHOD("set_zoom_factor", "view_index", "zoom_factor"), &NativeBridge::set_zoom_factor);
-    ClassDB::bind_method(D_METHOD("set_focus_point", "view_index", "x", "y"), &NativeBridge::set_focus_point);
-    ClassDB::bind_method(D_METHOD("trigger_haptic_impact"), &NativeBridge::trigger_haptic_impact);
+	ClassDB::bind_method(D_METHOD("set_zoom_factor", "view_index", "zoom_factor"), &NativeBridge::set_zoom_factor);
+	ClassDB::bind_method(D_METHOD("set_focus_point", "view_index", "x", "y"), &NativeBridge::set_focus_point);
+	ClassDB::bind_method(D_METHOD("trigger_haptic_impact"), &NativeBridge::trigger_haptic_impact);
 
 	ClassDB::bind_method(D_METHOD("request_camera_permission"), &NativeBridge::request_camera_permission);
 	ClassDB::bind_method(D_METHOD("initialize_camera"), &NativeBridge::initialize_camera);
 	ClassDB::bind_method(D_METHOD("capture_photo"), &NativeBridge::capture_photo);
-    
-    ADD_SIGNAL(MethodInfo("permission_granted"));
+	ClassDB::bind_method(D_METHOD("set_layout_snapshot", "layout_snapshot"), &NativeBridge::set_layout_snapshot);
+	ClassDB::bind_method(D_METHOD("capture_layout_image", "layout_snapshot"), &NativeBridge::capture_layout_image);
+	ClassDB::bind_method(D_METHOD("open_photo_library"), &NativeBridge::open_photo_library);
+
+	ADD_SIGNAL(MethodInfo("permission_granted"));
+	ADD_SIGNAL(MethodInfo("image_save_started"));
+	ADD_SIGNAL(MethodInfo("image_save_finished", PropertyInfo(Variant::PACKED_BYTE_ARRAY, "thumbnail_data")));
 }

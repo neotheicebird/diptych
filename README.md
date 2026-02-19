@@ -1,4 +1,4 @@
-# Diptych - Dual-Stream Camera App
+# Diptych - Layout-Driven Camera App
 
 This project is a high-performance iOS application built with **Godot 4.5+** and **C++ GDExtension**. Its core feature is the ability to capture and display two simultaneous camera feeds (e.g., Front and Back) using iOS `AVCaptureMultiCamSession`.
 
@@ -8,25 +8,30 @@ This project is a high-performance iOS application built with **Godot 4.5+** and
   - **GDScript:** UI, Scene management, layout logic.
   - **C++ (GDExtension):** Core infrastructure, native Camera management (`AVFoundation`), image processing.
 - **Target Platform:** iOS (iPhone 12 Baseline).
-- **Key Feature:** Simultaneous Dual-Stream Video (MultiCam) with fallback for single-camera devices.
+- **Key Feature:** WYSIWYG layout-driven preview and image capture, with multi-stream fallback.
 
 ## Architecture
 
 ### The Hybrid Model
 The app enforces a strict separation of concerns:
-1.  **Godot Layer (GDScript):** Handles the "Split-Screen" UI, rendering two distinct texture rects for the camera feeds.
-2.  **Core Layer (C++):** implemented via **GDExtension**. It manages the `AVCaptureMultiCamSession` and exposes two live texture targets (`Top` and `Bottom`) to Godot.
+1.  **Godot Layer (GDScript):** Handles preview UI, HUD, and layout snapshot generation.
+2.  **Layout Layer (`LayoutManager`):** Produces a normalized `LayoutSnapshot` contract used by both preview and capture.
+3.  **Core Layer (C++):** Implemented via **GDExtension**. It manages camera streams, consumes layout snapshots, composites captures, and writes to Camera Roll.
 
 ### Native Bridge
 - **`NativeBridge` (C++):** A `Node`-derived class exposed to Godot.
     - `start_camera()`: Initializes the native session (MultiCam if supported).
     - `get_texture_top()` / `get_texture_bottom()`: Returns the `ImageTexture` resources for the two feeds.
     - `is_multicam_supported()`: Returns `true` if the device supports simultaneous capture.
+    - `set_layout_snapshot(snapshot)`: Caches the active layout snapshot in native code.
+    - `capture_layout_image(snapshot)`: Captures, composites, and saves a WYSIWYG image.
+    - Signals: `image_save_started`, `image_save_finished(thumbnail_data)`.
 - **`Native` (Autoload):** A global singleton in Godot that provides access to the `NativeBridge` instance anywhere in the app.
 
 ## Project Structure
 - `project.godot`: Main engine configuration.
-- `Main.tscn/gd`: The UI entry point. Manages the split-screen layout.
+- `Main.tscn/gd`: The UI entry point. Manages HUD feedback and layout-driven capture flow.
+- `LayoutManager.gd`: Canonical layout source of truth for preview and capture composition.
 - `NativeBridge.gd`: A wrapper script extending the C++ class to enable Autoload registration.
 - `extension/`: The C++ source code.
     - `src/`: Custom C++ classes (`NativeBridge`, `CameraManager`).
@@ -81,5 +86,5 @@ scons platform=ios arch=arm64 target=template_debug
 - [x] iOS Export Configuration (Privacy keys, Icons).
 - [x] Migration to C++ GDExtension.
 - [x] **Dual-Stream Logic:** Simultaneous capture from two cameras.
-- [x] **Split-Screen Layout:** UI implementation for top/bottom feeds.
+- [x] **Layout-Driven Capture Path:** Shared layout snapshot contract between preview and compositor.
 - [x] Validated On-Device Deployment.

@@ -1,13 +1,201 @@
 #include "../../camera_manager.h"
 
 #import <AVFoundation/AVFoundation.h>
+#import <Photos/Photos.h>
 #import <UIKit/UIKit.h>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/rect2.hpp>
+#include <godot_cpp/variant/vector2.hpp>
+#include <godot_cpp/variant/vector2i.hpp>
+
+#include <algorithm>
+#include <cstring>
 #include <mutex>
+#include <vector>
 
 using namespace godot;
+
+namespace {
+
+struct FrameSnapshot {
+	PackedByteArray rgba;
+	int width = 0;
+	int height = 0;
+	bool valid = false;
+};
+
+struct SlotSpec {
+	String stream_id;
+	Rect2 normalized_rect;
+	int z_index = 0;
+	String fallback_policy;
+};
+
+struct SeparatorSpec {
+	Rect2 normalized_rect;
+	Color color;
+};
+
+struct ParsedLayoutSnapshot {
+	Vector2i output_size = Vector2i(1170, 2532);
+	std::vector<SlotSpec> slots;
+	std::vector<SeparatorSpec> separators;
+};
+
+static Vector2i extract_output_size(const Dictionary &layout_snapshot) {
+	Vector2i output_size(1170, 2532);
+	if (!layout_snapshot.has("output_size")) {
+		return output_size;
+	}
+
+	Variant size_variant = layout_snapshot["output_size"];
+	if (size_variant.get_type() == Variant::VECTOR2I) {
+		output_size = size_variant;
+	} else if (size_variant.get_type() == Variant::VECTOR2) {
+		Vector2 size = size_variant;
+		output_size = Vector2i((int)MAX(1.0f, size.x), (int)MAX(1.0f, size.y));
+	}
+
+	output_size.x = MAX(output_size.x, 1);
+	output_size.y = MAX(output_size.y, 1);
+	return output_size;
+}
+
+static ParsedLayoutSnapshot parse_layout_snapshot(const Dictionary &layout_snapshot) {
+	ParsedLayoutSnapshot parsed;
+	parsed.output_size = extract_output_size(layout_snapshot);
+
+	if (layout_snapshot.has("slots")) {
+		Array slots = layout_snapshot["slots"];
+		for (int64_t i = 0; i < slots.size(); i++) {
+			if (slots[i].get_type() != Variant::DICTIONARY) {
+				continue;
+			}
+			Dictionary slot_dict = slots[i];
+			if (!slot_dict.has("rect")) {
+				continue;
+			}
+
+			SlotSpec slot;
+			slot.stream_id = slot_dict.get("stream_id", String("primary"));
+			slot.normalized_rect = slot_dict["rect"];
+			slot.z_index = (int)slot_dict.get("z_index", 0);
+			slot.fallback_policy = slot_dict.get("fallback_policy", String("duplicate_primary"));
+			parsed.slots.push_back(slot);
+		}
+	}
+
+	if (layout_snapshot.has("separators")) {
+		Array separators = layout_snapshot["separators"];
+		for (int64_t i = 0; i < separators.size(); i++) {
+			if (separators[i].get_type() != Variant::DICTIONARY) {
+				continue;
+			}
+			Dictionary separator_dict = separators[i];
+			if (!separator_dict.has("rect")) {
+				continue;
+			}
+
+			SeparatorSpec separator;
+			separator.normalized_rect = separator_dict["rect"];
+			separator.color = separator_dict.get("color", Color(1.0, 1.0, 1.0, 0.22));
+			parsed.separators.push_back(separator);
+		}
+	}
+
+	std::sort(parsed.slots.begin(), parsed.slots.end(), [](const SlotSpec &lhs, const SlotSpec &rhs) {
+		return lhs.z_index < rhs.z_index;
+	});
+
+	return parsed;
+}
+
+static CGRect normalized_rect_to_pixels(const Rect2 &normalized_rect, const Vector2i &output_size) {
+	CGFloat x = normalized_rect.position.x * output_size.x;
+	CGFloat y = normalized_rect.position.y * output_size.y;
+	CGFloat w = normalized_rect.size.x * output_size.x;
+	CGFloat h = normalized_rect.size.y * output_size.y;
+	return CGRectIntegral(CGRectMake(x, y, MAX(w, 1.0), MAX(h, 1.0)));
+}
+
+static CGImageRef create_cgimage_from_rgba_frame(const FrameSnapshot &frame) {
+	if (!frame.valid || frame.width <= 0 || frame.height <= 0 || frame.rgba.size() <= 0) {
+		return nullptr;
+	}
+
+	CFDataRef data_ref = CFDataCreate(kCFAllocatorDefault, frame.rgba.ptr(), frame.rgba.size());
+	if (!data_ref) {
+		return nullptr;
+	}
+
+	CGDataProviderRef provider = CGDataProviderCreateWithCFData(data_ref);
+	CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+	CGImageRef image = CGImageCreate(
+		frame.width,
+		frame.height,
+		8,
+		32,
+		frame.width * 4,
+		color_space,
+		kCGImageAlphaPremultipliedLast | kCGBitmapByteOrderDefault,
+		provider,
+		nullptr,
+		false,
+		kCGRenderingIntentDefault
+	);
+
+	CGColorSpaceRelease(color_space);
+	CGDataProviderRelease(provider);
+	CFRelease(data_ref);
+	return image;
+}
+
+static void draw_aspect_fill_image(CGContextRef context, CGImageRef source_image, CGRect destination_rect) {
+	if (!context || !source_image || CGRectIsEmpty(destination_rect)) {
+		return;
+	}
+
+	size_t source_width = CGImageGetWidth(source_image);
+	size_t source_height = CGImageGetHeight(source_image);
+	if (source_width == 0 || source_height == 0) {
+		return;
+	}
+
+	CGFloat scale = MAX(destination_rect.size.width / (CGFloat)source_width, destination_rect.size.height / (CGFloat)source_height);
+	CGFloat crop_width = destination_rect.size.width / scale;
+	CGFloat crop_height = destination_rect.size.height / scale;
+	CGFloat crop_x = (((CGFloat)source_width) - crop_width) * 0.5;
+	CGFloat crop_y = (((CGFloat)source_height - crop_height) * 0.5);
+	CGRect crop_rect = CGRectIntegral(CGRectMake(crop_x, crop_y, crop_width, crop_height));
+
+	CGImageRef cropped = CGImageCreateWithImageInRect(source_image, crop_rect);
+	if (!cropped) {
+		return;
+	}
+	CGContextDrawImage(context, destination_rect, cropped);
+	CGImageRelease(cropped);
+}
+
+static UIImage *make_thumbnail_image(UIImage *input_image, int thumbnail_size) {
+	if (!input_image || thumbnail_size <= 0) {
+		return nil;
+	}
+	CGSize size = CGSizeMake(thumbnail_size, thumbnail_size);
+	UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:size];
+	UIImage *thumbnail = [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull renderer_context) {
+		CGRect dest = CGRectMake(0, 0, size.width, size.height);
+		CGContextRef context = renderer_context.CGContext;
+		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+		draw_aspect_fill_image(context, input_image.CGImage, dest);
+	}];
+	return thumbnail;
+}
+
+} // namespace
 
 /**
  * CameraDelegate (Objective-C)
@@ -61,6 +249,9 @@ struct CameraManager::Impl {
     bool is_multicam = false;
     
     std::function<void()> permission_callback;
+    std::function<void()> image_save_started_callback;
+    std::function<void(const PackedByteArray &)> image_save_finished_callback;
+    Dictionary layout_snapshot;
 
     /**
      * process_sample_buffer
@@ -544,4 +735,215 @@ void CameraManager::set_permission_callback(std::function<void()> callback) {
     impl->permission_callback = callback;
 }
 
+void CameraManager::set_image_save_started_callback(std::function<void()> callback) {
+    impl->image_save_started_callback = callback;
+}
 
+void CameraManager::set_image_save_finished_callback(std::function<void(const PackedByteArray &)> callback) {
+    impl->image_save_finished_callback = callback;
+}
+
+void CameraManager::set_layout_snapshot(const Dictionary &layout_snapshot) {
+    impl->layout_snapshot = layout_snapshot;
+}
+
+void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
+    Dictionary snapshot = layout_snapshot;
+    if (snapshot.is_empty()) {
+        snapshot = impl->layout_snapshot;
+    }
+
+    ParsedLayoutSnapshot parsed = parse_layout_snapshot(snapshot);
+    if (parsed.slots.empty()) {
+        SlotSpec primary;
+        primary.stream_id = "primary";
+        primary.normalized_rect = Rect2(0.0, 0.0, 1.0, 0.5);
+        primary.z_index = 0;
+        primary.fallback_policy = "duplicate_primary";
+
+        SlotSpec secondary;
+        secondary.stream_id = "secondary";
+        secondary.normalized_rect = Rect2(0.0, 0.5, 1.0, 0.5);
+        secondary.z_index = 1;
+        secondary.fallback_policy = "duplicate_primary";
+
+        parsed.slots.push_back(primary);
+        parsed.slots.push_back(secondary);
+    }
+
+    if (impl->image_save_started_callback) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (impl->image_save_started_callback) {
+                impl->image_save_started_callback();
+            }
+        });
+    }
+
+    dispatch_async(impl->cameraQueue, ^{
+        @autoreleasepool {
+            auto copy_stream = [](const CameraManager::Impl::StreamData &stream) -> FrameSnapshot {
+                FrameSnapshot snapshot;
+                if (stream.current_buffer.size() <= 0 || stream.buffer_width <= 0 || stream.buffer_height <= 0) {
+                    return snapshot;
+                }
+                snapshot.rgba = stream.current_buffer;
+                snapshot.width = stream.buffer_width;
+                snapshot.height = stream.buffer_height;
+                snapshot.valid = true;
+                return snapshot;
+            };
+
+            FrameSnapshot primary_frame;
+            FrameSnapshot secondary_frame;
+            {
+                std::lock_guard<std::mutex> lock(impl->buffer_mutex);
+                primary_frame = copy_stream(impl->top_stream);
+                secondary_frame = copy_stream(impl->bottom_stream);
+            }
+
+            auto resolve_frame_for_slot = [&](const SlotSpec &slot) -> FrameSnapshot {
+                FrameSnapshot selected;
+                if (slot.stream_id == "primary") {
+                    selected = primary_frame;
+                } else if (slot.stream_id == "secondary") {
+                    selected = secondary_frame;
+                } else {
+                    selected = primary_frame;
+                }
+
+                if (selected.valid) {
+                    return selected;
+                }
+
+                if (slot.fallback_policy == "duplicate_primary") {
+                    if (primary_frame.valid) {
+                        return primary_frame;
+                    }
+                } else if (slot.fallback_policy == "fallback_to_secondary") {
+                    if (secondary_frame.valid) {
+                        return secondary_frame;
+                    }
+                } else if (slot.fallback_policy == "empty") {
+                    return FrameSnapshot();
+                }
+
+                if (primary_frame.valid) {
+                    return primary_frame;
+                }
+                return secondary_frame;
+            };
+
+            size_t output_width = (size_t)MAX(1, parsed.output_size.x);
+            size_t output_height = (size_t)MAX(1, parsed.output_size.y);
+            size_t bytes_per_row = output_width * 4;
+            size_t canvas_byte_count = output_height * bytes_per_row;
+
+            NSMutableData *canvas_data = [NSMutableData dataWithLength:canvas_byte_count];
+            if (!canvas_data) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (impl->image_save_finished_callback) {
+                        impl->image_save_finished_callback(PackedByteArray());
+                    }
+                });
+                return;
+            }
+
+            CGColorSpaceRef color_space = CGColorSpaceCreateDeviceRGB();
+            CGContextRef context = CGBitmapContextCreate(
+                canvas_data.mutableBytes,
+                output_width,
+                output_height,
+                8,
+                bytes_per_row,
+                color_space,
+                kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
+            );
+            CGColorSpaceRelease(color_space);
+
+            if (!context) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (impl->image_save_finished_callback) {
+                        impl->image_save_finished_callback(PackedByteArray());
+                    }
+                });
+                return;
+            }
+
+            CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
+            CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0);
+            CGContextFillRect(context, CGRectMake(0, 0, output_width, output_height));
+
+            for (const SlotSpec &slot : parsed.slots) {
+                FrameSnapshot frame = resolve_frame_for_slot(slot);
+                if (!frame.valid) {
+                    continue;
+                }
+
+                CGRect destination_rect = normalized_rect_to_pixels(slot.normalized_rect, parsed.output_size);
+                CGImageRef source_image = create_cgimage_from_rgba_frame(frame);
+                if (!source_image) {
+                    continue;
+                }
+                draw_aspect_fill_image(context, source_image, destination_rect);
+                CGImageRelease(source_image);
+            }
+
+            for (const SeparatorSpec &separator : parsed.separators) {
+                CGRect destination_rect = normalized_rect_to_pixels(separator.normalized_rect, parsed.output_size);
+                CGContextSetRGBFillColor(
+                    context,
+                    separator.color.r,
+                    separator.color.g,
+                    separator.color.b,
+                    separator.color.a
+                );
+                CGContextFillRect(context, destination_rect);
+            }
+
+            CGImageRef composed_cgimage = CGBitmapContextCreateImage(context);
+            CGContextRelease(context);
+            if (!composed_cgimage) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (impl->image_save_finished_callback) {
+                        impl->image_save_finished_callback(PackedByteArray());
+                    }
+                });
+                return;
+            }
+
+            UIImage *composed_image = [UIImage imageWithCGImage:composed_cgimage scale:1.0 orientation:UIImageOrientationUp];
+            UIImage *thumbnail_image = make_thumbnail_image(composed_image, 256);
+            NSData *thumbnail_data = thumbnail_image ? UIImagePNGRepresentation(thumbnail_image) : nil;
+            PackedByteArray thumbnail_bytes;
+            if (thumbnail_data && thumbnail_data.length > 0) {
+                thumbnail_bytes.resize((int64_t)thumbnail_data.length);
+                memcpy(thumbnail_bytes.ptrw(), thumbnail_data.bytes, thumbnail_data.length);
+            }
+
+            CGImageRelease(composed_cgimage);
+
+            [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
+                [PHAssetChangeRequest creationRequestForAssetFromImage:composed_image];
+            } completionHandler:^(BOOL success, NSError * _Nullable error) {
+                if (!success && error) {
+                    UtilityFunctions::print("CameraManager: Failed to save image to library.");
+                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (impl->image_save_finished_callback) {
+                        impl->image_save_finished_callback(thumbnail_bytes);
+                    }
+                });
+            }];
+        }
+    });
+}
+
+void CameraManager::open_photo_library() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSURL *photos_url = [NSURL URLWithString:@"photos-redirect://"];
+        UIApplication *application = [UIApplication sharedApplication];
+        if ([application canOpenURL:photos_url]) {
+            [application openURL:photos_url options:@{} completionHandler:nil];
+        }
+    });
+}

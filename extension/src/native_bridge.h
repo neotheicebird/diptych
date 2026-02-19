@@ -51,12 +51,15 @@ public:
     // Interactive Controls
     void set_zoom_factor(int view_index, float zoom_factor);
     void set_focus_point(int view_index, float x, float y);
-    void trigger_haptic_impact();
+	void trigger_haptic_impact();
 
 	// Placeholder methods for future iOS integration.
 	void request_camera_permission();
 	void initialize_camera();
 	void capture_photo();
+	void set_layout_snapshot(Dictionary layout_snapshot);
+	void capture_layout_image(Dictionary layout_snapshot);
+	void open_photo_library();
 };
 
 #endif // NATIVE_BRIDGE_H

@@ -2,11 +2,12 @@ extends Control
 
 # EDUCATIONAL:
 # The scene is composed in three layers:
-# 1) CameraFeedLayer (base) for live camera textures
-# 2) HUDLayer for controls
-# 3) FXLayer for transient visual effects
+# 1) CameraFeedLayer for live camera textures.
+# 2) HUDLayer for persistent controls.
+# 3) FXLayer for transient visual feedback.
 #
-# Keeping these concerns separate makes it easier to evolve each layer independently.
+# Capture uses a separate LayoutManager snapshot so preview and saved output
+# share one contract even when we add new layout presets later.
 @onready var top_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneB/TopPreview
 @onready var bottom_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneC/BottomPreview
 @onready var thumbnail_control: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl
@@ -16,6 +17,7 @@ extends Control
 @onready var flash_overlay: ColorRect = $FXLayer/FXRoot/FlashOverlay
 
 const THUMBNAIL_IDLE_TEXTURE := preload("res://assets/icons/square.svg")
+const LayoutManagerScript := preload("res://LayoutManager.gd")
 const HUD_ACCENT_COLOR := Color(0.968627, 0.980392, 0.988235, 1.0) # #f7fafc
 const HUD_ROW_FROM_BOTTOM_RATIO := 0.10
 const HUD_SIDE_MARGIN_RATIO := 0.05
@@ -25,7 +27,6 @@ const SHUTTER_PRESS_OUT_DURATION := 0.09
 const FLASH_IN_DURATION := 0.04
 const FLASH_OUT_DURATION := 0.16
 const THUMBNAIL_MIN_PROCESSING_DURATION := 0.56
-const THUMBNAIL_MOCK_SAVE_DURATION := 0.72
 const THUMBNAIL_PULSE_SCALE := 0.92
 const THUMBNAIL_PULSE_HALF_DURATION := 0.18
 const THUMBNAIL_PULSE_ALPHA := 0.6
@@ -33,47 +34,45 @@ const THUMBNAIL_PULSE_ALPHA := 0.6
 var shutter_tween: Tween
 var fx_tween: Tween
 var thumbnail_tween: Tween
-var thumbnail_processing_sequence := 0
-var thumbnail_processing_started_msec := 0
 
-func _ready():
+var layout_manager = LayoutManagerScript.new()
+var save_feedback_sequence := 0
+var save_feedback_started_msec := 0
+
+func _ready() -> void:
 	print("Main: Ready")
 
-	# EDUCATIONAL:
-	# We explicitly bind HUD behavior in _ready so the scene stays declarative while
-	# interaction logic remains centralized in this script.
 	shutter_button.pressed.connect(_on_shutter_pressed)
-	resized.connect(_layout_hud_controls)
-	_layout_hud_controls()
+	thumbnail_control.gui_input.connect(_on_thumbnail_gui_input)
+	resized.connect(_on_main_resized)
+	_on_main_resized()
+
 	thumbnail_control.texture = THUMBNAIL_IDLE_TEXTURE
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
+	thumbnail_control.mouse_filter = Control.MOUSE_FILTER_STOP
 	layout_control.modulate = HUD_ACCENT_COLOR
-	
-	# EDUCATIONAL:
-	# Hybrid Architecture Communication:
-	# Here, GDScript (UI) calls into GDExtension (C++) via the 'Native' singleton.
-	# This singleton is registered in C++ and made available to Godot as an Autoload.
+
 	if Native:
+		_connect_native_signals()
 		Native.start_camera()
-		
-		# EDUCATIONAL:
-		# GDExtension can return Godot-native types like Ref<Texture2D>.
-		# This allows for seamless high-performance data sharing between C++ and UI.
-		var tex_top = Native.get_texture_top()
-		var tex_bottom = Native.get_texture_bottom()
-		
+
+		var tex_top: Texture2D = Native.get_texture_top()
+		var tex_bottom: Texture2D = Native.get_texture_bottom()
 		if tex_top and tex_bottom:
 			top_preview.texture = tex_top
 			bottom_preview.texture = tex_bottom
 		else:
-			push_error("ERROR: CAMERA TEXTURE NULL")
-	else:
-		push_error("ERROR: NATIVE BRIDGE NOT FOUND")
+			push_error("ERROR: Camera textures are null")
 
-func _layout_hud_controls():
-	# EDUCATIONAL:
-	# We compute the controls from screen size so center alignment remains correct
-	# across iPhone sizes and orientations.
+		_publish_layout_snapshot()
+	else:
+		push_error("ERROR: Native bridge not found")
+
+func _on_main_resized() -> void:
+	_layout_hud_controls()
+	_publish_layout_snapshot()
+
+func _layout_hud_controls() -> void:
 	var viewport_size := size
 	var shutter_size := shutter_control.custom_minimum_size
 	var thumb_size := thumbnail_control.custom_minimum_size
@@ -89,25 +88,44 @@ func _layout_hud_controls():
 	layout_control.position = Vector2(viewport_size.x - side_margin - layout_size.x, target_center_y - (layout_size.y * 0.5))
 	layout_control.size = layout_size
 
-	# Pivot needs to be at visual center for clean scale animation.
 	shutter_button.pivot_offset = shutter_button.size * 0.5
 	thumbnail_control.pivot_offset = thumbnail_control.size * 0.5
 	layout_control.pivot_offset = layout_control.size * 0.5
 
-func _on_shutter_pressed():
+func _build_layout_snapshot() -> Dictionary:
+	var has_secondary_stream := true
+	if Native and Native.has_method("is_multicam_supported"):
+		has_secondary_stream = Native.is_multicam_supported()
+	return layout_manager.build_snapshot(size, has_secondary_stream)
+
+func _publish_layout_snapshot() -> void:
+	if Native and Native.has_method("set_layout_snapshot"):
+		Native.set_layout_snapshot(_build_layout_snapshot())
+
+func _connect_native_signals() -> void:
+	if Native.has_signal("image_save_started"):
+		if not Native.image_save_started.is_connected(_on_native_image_save_started):
+			Native.image_save_started.connect(_on_native_image_save_started)
+	if Native.has_signal("image_save_finished"):
+		if not Native.image_save_finished.is_connected(_on_native_image_save_finished):
+			Native.image_save_finished.connect(_on_native_image_save_finished)
+
+func _on_shutter_pressed() -> void:
 	_play_shutter_press_animation()
 	_play_flash_fx()
-	_start_thumbnail_processing_feedback()
 	_try_trigger_shutter_haptic()
 
-func _start_thumbnail_processing_feedback():
-	thumbnail_processing_sequence += 1
-	var sequence_id := thumbnail_processing_sequence
-	thumbnail_processing_started_msec = Time.get_ticks_msec()
-	_begin_thumbnail_processing_tween()
-	_finish_thumbnail_processing_feedback(sequence_id)
+	if Native and Native.has_method("capture_layout_image"):
+		Native.capture_layout_image(_build_layout_snapshot())
+	else:
+		_begin_thumbnail_processing_feedback()
+		await get_tree().create_timer(THUMBNAIL_MIN_PROCESSING_DURATION).timeout
+		_end_thumbnail_processing_feedback()
 
-func _begin_thumbnail_processing_tween():
+func _begin_thumbnail_processing_feedback() -> void:
+	save_feedback_sequence += 1
+	save_feedback_started_msec = Time.get_ticks_msec()
+
 	if thumbnail_tween:
 		thumbnail_tween.kill()
 
@@ -121,26 +139,58 @@ func _begin_thumbnail_processing_tween():
 	thumbnail_tween.tween_property(thumbnail_control, "scale", Vector2.ONE, THUMBNAIL_PULSE_HALF_DURATION)
 	thumbnail_tween.parallel().tween_property(thumbnail_control, "modulate:a", 1.0, THUMBNAIL_PULSE_HALF_DURATION)
 
-func _finish_thumbnail_processing_feedback(sequence_id: int):
-	# Placeholder until native capture/save callback is integrated.
-	await get_tree().create_timer(THUMBNAIL_MOCK_SAVE_DURATION).timeout
-	if sequence_id != thumbnail_processing_sequence:
-		return
-
-	var elapsed_seconds := float(Time.get_ticks_msec() - thumbnail_processing_started_msec) / 1000.0
-	var remaining_seconds: float = max(0.0, THUMBNAIL_MIN_PROCESSING_DURATION - elapsed_seconds)
-	if remaining_seconds > 0.0:
-		await get_tree().create_timer(remaining_seconds).timeout
-
-	if sequence_id != thumbnail_processing_sequence:
-		return
-
+func _end_thumbnail_processing_feedback() -> void:
 	if thumbnail_tween:
 		thumbnail_tween.kill()
 	thumbnail_control.scale = Vector2.ONE
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
 
-func _play_shutter_press_animation():
+func _on_native_image_save_started() -> void:
+	_begin_thumbnail_processing_feedback()
+
+func _on_native_image_save_finished(thumbnail_data: PackedByteArray) -> void:
+	var sequence_at_finish := save_feedback_sequence
+	if sequence_at_finish == 0:
+		_begin_thumbnail_processing_feedback()
+		sequence_at_finish = save_feedback_sequence
+
+	var elapsed_seconds := float(Time.get_ticks_msec() - save_feedback_started_msec) / 1000.0
+	var remaining_seconds: float = max(0.0, THUMBNAIL_MIN_PROCESSING_DURATION - elapsed_seconds)
+	if remaining_seconds > 0.0:
+		await get_tree().create_timer(remaining_seconds).timeout
+
+	if sequence_at_finish != save_feedback_sequence:
+		return
+
+	_end_thumbnail_processing_feedback()
+	_apply_thumbnail_texture(thumbnail_data)
+
+func _apply_thumbnail_texture(thumbnail_data: PackedByteArray) -> void:
+	if thumbnail_data.is_empty():
+		return
+
+	var thumbnail_image := Image.new()
+	var load_result := thumbnail_image.load_png_from_buffer(thumbnail_data)
+	if load_result != OK:
+		push_warning("Main: Failed to decode thumbnail PNG from native layer.")
+		return
+
+	thumbnail_control.texture = ImageTexture.create_from_image(thumbnail_image)
+	thumbnail_control.modulate = HUD_ACCENT_COLOR
+
+func _on_thumbnail_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_open_photo_library()
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			_open_photo_library()
+
+func _open_photo_library() -> void:
+	if Native and Native.has_method("open_photo_library"):
+		Native.open_photo_library()
+
+func _play_shutter_press_animation() -> void:
 	if shutter_tween:
 		shutter_tween.kill()
 
@@ -151,7 +201,7 @@ func _play_shutter_press_animation():
 	shutter_tween.set_ease(Tween.EASE_IN)
 	shutter_tween.tween_property(shutter_button, "scale", Vector2.ONE, SHUTTER_PRESS_OUT_DURATION)
 
-func _play_flash_fx():
+func _play_flash_fx() -> void:
 	if fx_tween:
 		fx_tween.kill()
 
@@ -160,15 +210,9 @@ func _play_flash_fx():
 	fx_tween.tween_property(flash_overlay, "modulate:a", 0.9, FLASH_IN_DURATION)
 	fx_tween.tween_property(flash_overlay, "modulate:a", 0.0, FLASH_OUT_DURATION)
 
-func _try_trigger_shutter_haptic():
-	# Use the native haptic bridge only if the method is already available.
+func _try_trigger_shutter_haptic() -> void:
 	if Native and Native.has_method("trigger_haptic_impact"):
 		Native.trigger_haptic_impact()
 
-# EDUCATIONAL:
-# _process(delta) runs every frame. We can use it for UI updates that depend on
-# real-time data from the native layer.
-func _process(_delta):
-	# If NativeBridge requires manual polling for updates (though our C++ code
-	# currently updates the texture internally), we could do it here.
+func _process(_delta: float) -> void:
 	pass

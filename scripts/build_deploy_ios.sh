@@ -22,6 +22,65 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
+patch_xcode_project_for_photos() {
+  local pbxproj_path="$1"
+  [[ -f "$pbxproj_path" ]] || fail "Xcode project file not found: $pbxproj_path"
+
+  if grep -q '"Photos"' "$pbxproj_path"; then
+    log "Photos framework linkage already present in exported project"
+    return
+  fi
+
+  local temp_path="${pbxproj_path}.tmp"
+  awk '
+    BEGIN {
+      in_config = 0
+      in_build_settings = 0
+      is_target_config = 0
+      has_other_ldflags = 0
+    }
+    {
+      line = $0
+
+      if (line ~ /isa = XCBuildConfiguration;/) {
+        in_config = 1
+        in_build_settings = 0
+        is_target_config = 0
+        has_other_ldflags = 0
+      }
+      if (in_config && line ~ /buildSettings = \{/) {
+        in_build_settings = 1
+      }
+      if (in_build_settings && line ~ /(INFOPLIST_FILE =|CODE_SIGN_ENTITLEMENTS =|PRODUCT_BUNDLE_IDENTIFIER =)/) {
+        is_target_config = 1
+      }
+      if (is_target_config && line ~ /OTHER_LDFLAGS = /) {
+        has_other_ldflags = 1
+      }
+
+      if (is_target_config && !has_other_ldflags && line ~ /LIBRARY_SEARCH_PATHS = \(/) {
+        print "\t\t\t\tOTHER_LDFLAGS = ("
+        print "\t\t\t\t\t\"$(inherited)\","
+        print "\t\t\t\t\t\"-framework\","
+        print "\t\t\t\t\t\"Photos\","
+        print "\t\t\t\t);"
+      }
+
+      print line
+
+      if (in_config && line ~ /^\t\t\t};$/) {
+        in_config = 0
+        in_build_settings = 0
+        is_target_config = 0
+        has_other_ldflags = 0
+      }
+    }
+  ' "$pbxproj_path" > "$temp_path"
+
+  mv "$temp_path" "$pbxproj_path"
+  log "Patched exported project to link Photos.framework"
+}
+
 auto_detect_device() {
   xcrun xctrace list devices 2>/dev/null \
     | grep -vE 'Simulator|unavailable|MacBook|iMac|Mac mini|Mac Pro|Apple TV|Watch' \
@@ -61,10 +120,33 @@ log "Building macOS editor extension (required for Godot export)"
 )
 
 log "Exporting iOS project + archive + IPA via Godot"
+
+set +e
 (
   cd "$ROOT_DIR"
   "$GODOT_BIN" --headless --export-debug "$IOS_EXPORT_PRESET" "build/ios/${PROJECT_NAME}.xcodeproj"
 )
+GODOT_EXPORT_EXIT=$?
+set -e
+
+PBXPROJ_PATH="$ROOT_DIR/build/ios/${PROJECT_NAME}.xcodeproj/project.pbxproj"
+[[ -f "$PBXPROJ_PATH" ]] || fail "Exported Xcode project not found at: $PBXPROJ_PATH"
+patch_xcode_project_for_photos "$PBXPROJ_PATH"
+
+if [[ "$GODOT_EXPORT_EXIT" -ne 0 ]]; then
+  log "Godot export reported a build failure; continuing with manual archive from patched Xcode project"
+fi
+
+log "Archiving app via xcodebuild"
+xcodebuild \
+  -project "build/ios/${PROJECT_NAME}.xcodeproj" \
+  -scheme "${PROJECT_NAME}" \
+  -sdk iphoneos \
+  -configuration Debug \
+  -destination "generic/platform=iOS" \
+  -archivePath "build/ios/${PROJECT_NAME}.xcarchive" \
+  -allowProvisioningUpdates \
+  archive
 
 APP_PATH="$ROOT_DIR/build/ios/${PROJECT_NAME}.xcarchive/Products/Applications/${PROJECT_NAME}.app"
 [[ -d "$APP_PATH" ]] || fail "Built .app not found at: $APP_PATH"

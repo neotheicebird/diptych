@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/core/binder_common.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <functional>
 
@@ -30,8 +31,14 @@ public:
     void set_zoom_factor(int view_index, float zoom_factor);
     void set_focus_point(int view_index, float x, float y);
     void trigger_haptic_impact();
-    
+
     void set_permission_callback(std::function<void()> callback);
+    void set_image_save_started_callback(std::function<void()> callback);
+    void set_image_save_finished_callback(std::function<void(const PackedByteArray &)> callback);
+
+    void set_layout_snapshot(const Dictionary &layout_snapshot);
+    void capture_layout_image(const Dictionary &layout_snapshot);
+    void open_photo_library();
 
 private:
     Impl* impl;
