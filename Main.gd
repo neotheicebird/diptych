@@ -10,15 +10,12 @@ extends Control
 # share one contract even when we add new layout presets later.
 @onready var top_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneB/TopPreview
 @onready var bottom_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneC/BottomPreview
-@onready var thumbnail_control: Control = $HUDLayer/HUDRoot/ThumbnailControl
-@onready var thumbnail_image: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl/ThumbnailImage
-@onready var thumbnail_overlay: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl/ThumbnailOverlay
+@onready var thumbnail_control: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl
 @onready var layout_control: TextureRect = $HUDLayer/HUDRoot/LayoutControl
 @onready var shutter_control: Control = $HUDLayer/HUDRoot/ShutterControl
 @onready var shutter_button: Button = $HUDLayer/HUDRoot/ShutterControl/ShutterButton
 @onready var flash_overlay: ColorRect = $FXLayer/FXRoot/FlashOverlay
 
-const THUMBNAIL_IDLE_TEXTURE := preload("res://assets/icons/square.svg")
 const LayoutManagerScript := preload("res://LayoutManager.gd")
 const HUD_ACCENT_COLOR := Color(0.968627, 0.980392, 0.988235, 1.0) # #f7fafc
 const HUD_ROW_FROM_BOTTOM_RATIO := 0.10
@@ -32,12 +29,15 @@ const THUMBNAIL_MIN_PROCESSING_DURATION := 0.56
 const THUMBNAIL_PULSE_SCALE := 0.92
 const THUMBNAIL_PULSE_HALF_DURATION := 0.18
 const THUMBNAIL_PULSE_ALPHA := 0.6
-const THUMBNAIL_IMAGE_INSET_PX := 12.0
-const THUMBNAIL_MASK_CORNER_RADIUS_PX := 20.0
-const THUMBNAIL_MASK_SHADER_CODE := """
+const THUMBNAIL_CORNER_RADIUS_PX := 16.0
+# EDUCATIONAL:
+# We clip the thumbnail with a lightweight shader instead of nesting mask nodes.
+# This keeps the HUD hierarchy simple and makes the rounded-corner treatment
+# deterministic across all thumbnail textures.
+const THUMBNAIL_SHADER_CODE := """
 shader_type canvas_item;
 
-uniform float corner_radius_px = 20.0;
+uniform float corner_radius_px = 16.0;
 
 float rounded_rect_sdf(vec2 p, vec2 half_size, float radius) {
 	vec2 q = abs(p) - half_size + vec2(radius);
@@ -73,8 +73,8 @@ func _ready() -> void:
 	resized.connect(_on_main_resized)
 	_on_main_resized()
 
-	_setup_thumbnail_layers()
-	_set_thumbnail_visibility(false)
+	_setup_thumbnail_style()
+	_clear_thumbnail()
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
 	thumbnail_control.mouse_filter = Control.MOUSE_FILTER_STOP
 	layout_control.modulate = HUD_ACCENT_COLOR
@@ -102,7 +102,9 @@ func _on_main_resized() -> void:
 func _layout_hud_controls() -> void:
 	var viewport_size := size
 	var shutter_size := shutter_control.custom_minimum_size
-	var thumb_size := thumbnail_control.custom_minimum_size
+	# Keep thumbnail sized by the existing HUD layout baseline instead of a
+	# thumbnail-specific hardcoded size.
+	var thumb_size := layout_control.custom_minimum_size
 	var layout_size := layout_control.custom_minimum_size
 	var target_center_y := viewport_size.y * (1.0 - HUD_ROW_FROM_BOTTOM_RATIO)
 	var side_margin := viewport_size.x * HUD_SIDE_MARGIN_RATIO
@@ -119,31 +121,16 @@ func _layout_hud_controls() -> void:
 	thumbnail_control.pivot_offset = thumbnail_control.size * 0.5
 	layout_control.pivot_offset = layout_control.size * 0.5
 
-func _setup_thumbnail_layers() -> void:
-	thumbnail_image.texture = null
-	thumbnail_image.modulate = Color.WHITE
-	thumbnail_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	thumbnail_overlay.texture = THUMBNAIL_IDLE_TEXTURE
-	thumbnail_overlay.modulate = HUD_ACCENT_COLOR
-	thumbnail_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	thumbnail_image.offset_left = THUMBNAIL_IMAGE_INSET_PX
-	thumbnail_image.offset_top = THUMBNAIL_IMAGE_INSET_PX
-	thumbnail_image.offset_right = -THUMBNAIL_IMAGE_INSET_PX
-	thumbnail_image.offset_bottom = -THUMBNAIL_IMAGE_INSET_PX
-
-	var mask_shader := Shader.new()
-	mask_shader.code = THUMBNAIL_MASK_SHADER_CODE
-	var mask_material := ShaderMaterial.new()
-	mask_material.shader = mask_shader
-	mask_material.set_shader_parameter("corner_radius_px", THUMBNAIL_MASK_CORNER_RADIUS_PX)
-	thumbnail_image.material = mask_material
+func _setup_thumbnail_style() -> void:
+	var shader := Shader.new()
+	shader.code = THUMBNAIL_SHADER_CODE
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	material.set_shader_parameter("corner_radius_px", THUMBNAIL_CORNER_RADIUS_PX)
+	thumbnail_control.material = material
 
 func _set_thumbnail_visibility(visible: bool) -> void:
 	thumbnail_control.visible = visible
-	thumbnail_image.visible = visible
-	thumbnail_overlay.visible = visible
 
 func _build_layout_snapshot() -> Dictionary:
 	var has_secondary_stream := true
@@ -230,10 +217,17 @@ func _apply_thumbnail_texture(thumbnail_data: PackedByteArray) -> void:
 		push_warning("Main: Failed to decode thumbnail PNG from native layer.")
 		return
 
-	thumbnail_image.texture = ImageTexture.create_from_image(decoded_thumbnail)
+	thumbnail_control.texture = ImageTexture.create_from_image(decoded_thumbnail)
 	has_thumbnail_capture = true
 	_set_thumbnail_visibility(true)
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
+
+func _clear_thumbnail() -> void:
+	# EDUCATIONAL:
+	# A "no capture yet" state is represented by a null texture + hidden control.
+	# Keeping both conditions explicit avoids stale thumbnails after scene reloads.
+	thumbnail_control.texture = null
+	_set_thumbnail_visibility(false)
 
 func _on_thumbnail_gui_input(event: InputEvent) -> void:
 	if not has_thumbnail_capture or not thumbnail_control.visible:

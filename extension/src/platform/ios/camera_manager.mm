@@ -116,9 +116,11 @@ static ParsedLayoutSnapshot parse_layout_snapshot(const Dictionary &layout_snaps
 
 static CGRect normalized_rect_to_pixels(const Rect2 &normalized_rect, const Vector2i &output_size) {
 	CGFloat x = normalized_rect.position.x * output_size.x;
-	CGFloat y = normalized_rect.position.y * output_size.y;
 	CGFloat w = normalized_rect.size.x * output_size.x;
 	CGFloat h = normalized_rect.size.y * output_size.y;
+	// Layout snapshots use top-left normalized coordinates; CoreGraphics bitmap
+	// contexts draw in bottom-left coordinates by default.
+	CGFloat y = ((CGFloat)output_size.y) - (normalized_rect.position.y * output_size.y) - h;
 	return CGRectIntegral(CGRectMake(x, y, MAX(w, 1.0), MAX(h, 1.0)));
 }
 
@@ -189,6 +191,10 @@ static UIImage *make_thumbnail_image(UIImage *input_image, int thumbnail_size) {
 	UIImage *thumbnail = [renderer imageWithActions:^(UIGraphicsImageRendererContext * _Nonnull renderer_context) {
 		CGRect dest = CGRectMake(0, 0, size.width, size.height);
 		CGContextRef context = renderer_context.CGContext;
+		// UIGraphics uses a flipped coordinate system. Flip once here so the
+		// CoreGraphics draw path keeps thumbnail orientation upright.
+		CGContextTranslateCTM(context, 0.0, size.height);
+		CGContextScaleCTM(context, 1.0, -1.0);
 		CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
 		draw_aspect_fill_image(context, input_image.CGImage, dest);
 	}];
@@ -869,10 +875,11 @@ void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
                 return;
             }
 
-            // CoreGraphics uses a bottom-left origin by default; flip to top-left
-            // so saved composition and thumbnail match on-screen orientation.
-            CGContextTranslateCTM(context, 0.0, (CGFloat)output_height);
-            CGContextScaleCTM(context, 1.0, -1.0);
+            // EDUCATIONAL:
+            // We keep the bitmap context in native CoreGraphics coordinates.
+            // `normalized_rect_to_pixels` already converts top-left layout data
+            // into bottom-left pixel coordinates, so an extra CTM flip here would
+            // invert the final saved image.
             CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
             CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0);
             CGContextFillRect(context, CGRectMake(0, 0, output_width, output_height));

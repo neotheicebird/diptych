@@ -1,10 +1,8 @@
-[gd_scene load_steps=10 format=3 uid="uid://b8j5q6w7y8z9"]
+[gd_scene load_steps=9 format=3 uid="uid://b8j5q6w7y8z9"]
 
 [ext_resource type="Script" path="res://Main.gd" id="1_script"]
-[ext_resource type="Script" path="res://CameraSelector.gd" id="2_script"]
 [ext_resource type="Script" path="res://CameraControlManager.gd" id="3_script"]
 [ext_resource type="Script" path="res://ViewerInput.gd" id="4_script"]
-[ext_resource type="Texture2D" path="res://assets/icons/square.svg" id="5_thumb_idle"]
 [ext_resource type="Texture2D" path="res://assets/icons/layout.svg" id="6_layout_icon"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
@@ -85,29 +83,6 @@ offset_bottom = 100.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_focus")
 
-[node name="ControlOverlay" type="MarginContainer" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB"]
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -80.0
-grow_horizontal = 2
-grow_vertical = 0
-theme_override_constants/margin_right = 20
-script = ExtResource("2_script")
-
-[node name="CameraLabel" type="Label" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneB/ControlOverlay"]
-layout_mode = 2
-size_flags_horizontal = 8
-theme_override_colors/font_color = Color(1, 1, 1, 0.8)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
-theme_override_constants/shadow_outline_size = 1
-theme_override_font_sizes/font_size = 12
-text = "WIDE"
-horizontal_alignment = 2
-vertical_alignment = 1
-
 [node name="Divider" type="ColorRect" parent="CameraFeedLayer/MainLayout/PanesContainer"]
 custom_minimum_size = Vector2(0, 1)
 layout_mode = 2
@@ -137,30 +112,6 @@ offset_bottom = 100.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_focus")
 
-[node name="ControlOverlay" type="MarginContainer" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC"]
-layout_mode = 1
-anchors_preset = 12
-anchor_top = 1.0
-anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -80.0
-grow_horizontal = 2
-grow_vertical = 0
-theme_override_constants/margin_right = 20
-script = ExtResource("2_script")
-view_index = 1
-
-[node name="CameraLabel" type="Label" parent="CameraFeedLayer/MainLayout/PanesContainer/ZoneC/ControlOverlay"]
-layout_mode = 2
-size_flags_horizontal = 8
-theme_override_colors/font_color = Color(1, 1, 1, 0.8)
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
-theme_override_constants/shadow_outline_size = 1
-theme_override_font_sizes/font_size = 12
-text = "ULTRA"
-horizontal_alignment = 2
-vertical_alignment = 1
-
 [node name="HUDLayer" type="CanvasLayer" parent="."]
 layer = 1
 
@@ -172,32 +123,8 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="ThumbnailControl" type="Control" parent="HUDLayer/HUDRoot"]
-custom_minimum_size = Vector2(181, 181)
-offset_right = 181.0
-offset_bottom = 181.0
+[node name="ThumbnailControl" type="TextureRect" parent="HUDLayer/HUDRoot"]
 mouse_filter = 2
-
-[node name="ThumbnailImage" type="TextureRect" parent="HUDLayer/HUDRoot/ThumbnailControl"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-expand_mode = 1
-stretch_mode = 6
-
-[node name="ThumbnailOverlay" type="TextureRect" parent="HUDLayer/HUDRoot/ThumbnailControl"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-texture = ExtResource("5_thumb_idle")
 expand_mode = 1
 stretch_mode = 6
 
