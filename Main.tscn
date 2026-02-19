@@ -172,10 +172,30 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 
-[node name="ThumbnailControl" type="TextureRect" parent="HUDLayer/HUDRoot"]
+[node name="ThumbnailControl" type="Control" parent="HUDLayer/HUDRoot"]
 custom_minimum_size = Vector2(181, 181)
 offset_right = 181.0
 offset_bottom = 181.0
+mouse_filter = 2
+
+[node name="ThumbnailImage" type="TextureRect" parent="HUDLayer/HUDRoot/ThumbnailControl"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ThumbnailOverlay" type="TextureRect" parent="HUDLayer/HUDRoot/ThumbnailControl"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 texture = ExtResource("5_thumb_idle")
 expand_mode = 1

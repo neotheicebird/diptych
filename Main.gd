@@ -10,7 +10,9 @@ extends Control
 # share one contract even when we add new layout presets later.
 @onready var top_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneB/TopPreview
 @onready var bottom_preview: TextureRect = $CameraFeedLayer/MainLayout/PanesContainer/ZoneC/BottomPreview
-@onready var thumbnail_control: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl
+@onready var thumbnail_control: Control = $HUDLayer/HUDRoot/ThumbnailControl
+@onready var thumbnail_image: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl/ThumbnailImage
+@onready var thumbnail_overlay: TextureRect = $HUDLayer/HUDRoot/ThumbnailControl/ThumbnailOverlay
 @onready var layout_control: TextureRect = $HUDLayer/HUDRoot/LayoutControl
 @onready var shutter_control: Control = $HUDLayer/HUDRoot/ShutterControl
 @onready var shutter_button: Button = $HUDLayer/HUDRoot/ShutterControl/ShutterButton
@@ -30,6 +32,29 @@ const THUMBNAIL_MIN_PROCESSING_DURATION := 0.56
 const THUMBNAIL_PULSE_SCALE := 0.92
 const THUMBNAIL_PULSE_HALF_DURATION := 0.18
 const THUMBNAIL_PULSE_ALPHA := 0.6
+const THUMBNAIL_IMAGE_INSET_PX := 12.0
+const THUMBNAIL_MASK_CORNER_RADIUS_PX := 20.0
+const THUMBNAIL_MASK_SHADER_CODE := """
+shader_type canvas_item;
+
+uniform float corner_radius_px = 20.0;
+
+float rounded_rect_sdf(vec2 p, vec2 half_size, float radius) {
+	vec2 q = abs(p) - half_size + vec2(radius);
+	return length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+void fragment() {
+	vec2 tex_size = 1.0 / TEXTURE_PIXEL_SIZE;
+	vec2 p = UV * tex_size - (tex_size * 0.5);
+	vec2 half_size = (tex_size * 0.5) - vec2(0.5);
+	float radius = min(corner_radius_px, min(half_size.x, half_size.y) - 1.0);
+	float alpha_mask = 1.0 - smoothstep(0.0, 1.0, rounded_rect_sdf(p, half_size, radius));
+	vec4 tex_color = texture(TEXTURE, UV);
+	tex_color.a *= alpha_mask;
+	COLOR = tex_color;
+}
+"""
 
 var shutter_tween: Tween
 var fx_tween: Tween
@@ -38,6 +63,7 @@ var thumbnail_tween: Tween
 var layout_manager = LayoutManagerScript.new()
 var save_feedback_sequence := 0
 var save_feedback_started_msec := 0
+var has_thumbnail_capture := false
 
 func _ready() -> void:
 	print("Main: Ready")
@@ -47,7 +73,8 @@ func _ready() -> void:
 	resized.connect(_on_main_resized)
 	_on_main_resized()
 
-	thumbnail_control.texture = THUMBNAIL_IDLE_TEXTURE
+	_setup_thumbnail_layers()
+	_set_thumbnail_visibility(false)
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
 	thumbnail_control.mouse_filter = Control.MOUSE_FILTER_STOP
 	layout_control.modulate = HUD_ACCENT_COLOR
@@ -92,6 +119,32 @@ func _layout_hud_controls() -> void:
 	thumbnail_control.pivot_offset = thumbnail_control.size * 0.5
 	layout_control.pivot_offset = layout_control.size * 0.5
 
+func _setup_thumbnail_layers() -> void:
+	thumbnail_image.texture = null
+	thumbnail_image.modulate = Color.WHITE
+	thumbnail_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	thumbnail_overlay.texture = THUMBNAIL_IDLE_TEXTURE
+	thumbnail_overlay.modulate = HUD_ACCENT_COLOR
+	thumbnail_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	thumbnail_image.offset_left = THUMBNAIL_IMAGE_INSET_PX
+	thumbnail_image.offset_top = THUMBNAIL_IMAGE_INSET_PX
+	thumbnail_image.offset_right = -THUMBNAIL_IMAGE_INSET_PX
+	thumbnail_image.offset_bottom = -THUMBNAIL_IMAGE_INSET_PX
+
+	var mask_shader := Shader.new()
+	mask_shader.code = THUMBNAIL_MASK_SHADER_CODE
+	var mask_material := ShaderMaterial.new()
+	mask_material.shader = mask_shader
+	mask_material.set_shader_parameter("corner_radius_px", THUMBNAIL_MASK_CORNER_RADIUS_PX)
+	thumbnail_image.material = mask_material
+
+func _set_thumbnail_visibility(visible: bool) -> void:
+	thumbnail_control.visible = visible
+	thumbnail_image.visible = visible
+	thumbnail_overlay.visible = visible
+
 func _build_layout_snapshot() -> Dictionary:
 	var has_secondary_stream := true
 	if Native and Native.has_method("is_multicam_supported"):
@@ -123,6 +176,9 @@ func _on_shutter_pressed() -> void:
 		_end_thumbnail_processing_feedback()
 
 func _begin_thumbnail_processing_feedback() -> void:
+	if not has_thumbnail_capture or not thumbnail_control.visible:
+		return
+
 	save_feedback_sequence += 1
 	save_feedback_started_msec = Time.get_ticks_msec()
 
@@ -150,16 +206,15 @@ func _on_native_image_save_started() -> void:
 
 func _on_native_image_save_finished(thumbnail_data: PackedByteArray) -> void:
 	var sequence_at_finish := save_feedback_sequence
-	if sequence_at_finish == 0:
-		_begin_thumbnail_processing_feedback()
-		sequence_at_finish = save_feedback_sequence
 
-	var elapsed_seconds := float(Time.get_ticks_msec() - save_feedback_started_msec) / 1000.0
+	var elapsed_seconds := 0.0
+	if sequence_at_finish > 0:
+		elapsed_seconds = float(Time.get_ticks_msec() - save_feedback_started_msec) / 1000.0
 	var remaining_seconds: float = max(0.0, THUMBNAIL_MIN_PROCESSING_DURATION - elapsed_seconds)
 	if remaining_seconds > 0.0:
 		await get_tree().create_timer(remaining_seconds).timeout
 
-	if sequence_at_finish != save_feedback_sequence:
+	if sequence_at_finish > 0 and sequence_at_finish != save_feedback_sequence:
 		return
 
 	_end_thumbnail_processing_feedback()
@@ -169,16 +224,21 @@ func _apply_thumbnail_texture(thumbnail_data: PackedByteArray) -> void:
 	if thumbnail_data.is_empty():
 		return
 
-	var thumbnail_image := Image.new()
-	var load_result := thumbnail_image.load_png_from_buffer(thumbnail_data)
+	var decoded_thumbnail := Image.new()
+	var load_result := decoded_thumbnail.load_png_from_buffer(thumbnail_data)
 	if load_result != OK:
 		push_warning("Main: Failed to decode thumbnail PNG from native layer.")
 		return
 
-	thumbnail_control.texture = ImageTexture.create_from_image(thumbnail_image)
+	thumbnail_image.texture = ImageTexture.create_from_image(decoded_thumbnail)
+	has_thumbnail_capture = true
+	_set_thumbnail_visibility(true)
 	thumbnail_control.modulate = HUD_ACCENT_COLOR
 
 func _on_thumbnail_gui_input(event: InputEvent) -> void:
+	if not has_thumbnail_capture or not thumbnail_control.visible:
+		return
+
 	if event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			_open_photo_library()

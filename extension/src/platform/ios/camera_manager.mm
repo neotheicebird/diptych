@@ -869,6 +869,10 @@ void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
                 return;
             }
 
+            // CoreGraphics uses a bottom-left origin by default; flip to top-left
+            // so saved composition and thumbnail match on-screen orientation.
+            CGContextTranslateCTM(context, 0.0, (CGFloat)output_height);
+            CGContextScaleCTM(context, 1.0, -1.0);
             CGContextSetInterpolationQuality(context, kCGInterpolationHigh);
             CGContextSetRGBFillColor(context, 0.0, 0.0, 0.0, 1.0);
             CGContextFillRect(context, CGRectMake(0, 0, output_width, output_height));
