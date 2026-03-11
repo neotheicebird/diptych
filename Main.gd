@@ -40,10 +40,12 @@ const WORKBENCH_OPEN_DURATION := 0.32
 const WORKBENCH_CLOSE_DURATION := 0.24
 const LAYOUT_BACKDROP_CLOSE_GUARD_MS := 320
 const LAYOUT_POINTER_DEBOUNCE_MS := 220
-const PRESET_PREVIEW_SIZE := Vector2i(180, 320)
+const PRESET_PREVIEW_PORTRAIT_SIZE := Vector2i(180, 320)
+const PRESET_PREVIEW_LANDSCAPE_SIZE := Vector2i(320, 180)
+const PRESET_PREVIEW_CANONICAL_SIZE := PRESET_PREVIEW_PORTRAIT_SIZE
 const PRESET_CARD_HEIGHT := 356.0
-const PRESET_PREVIEW_FRAME_SIZE := Vector2(204.0, 332.0)
-const WORKBENCH_CARD_COUNT := 2.0
+const PRESET_PREVIEW_PORTRAIT_FRAME_SIZE := Vector2(204.0, 332.0)
+const PRESET_PREVIEW_LANDSCAPE_FRAME_SIZE := Vector2(332.0, 204.0)
 const WORKBENCH_CARD_OVERSCAN := 20.0
 const WORKBENCH_INNER_MARGIN := 16.0
 const WORKBENCH_CARD_GAP := 12.0
@@ -55,6 +57,7 @@ const PANEL_SWITCH_LEGACY_ICON_SIZE_RATIO := 0.75
 const PANEL_SWITCH_HIT_TARGET_MIN := 44.0
 const PANEL_SWITCH_BASE_SIDE_MARGIN := 10.0
 const PANEL_SWITCH_TOP_MARGIN := 20.0
+const PANEL_SWITCH_EXTRA_TOP_MARGIN := 8.0
 const PANEL_SWITCH_LABEL_TIMEOUT := 2.0
 const PANEL_SWITCH_ICON_TINT := Color(0.745098, 0.768627, 0.796078, 0.95)
 const PANEL_SWITCH_LABEL_BG := Color(0.05098, 0.066667, 0.086275, 0.58)
@@ -218,7 +221,8 @@ func _layout_hud_controls() -> void:
 
 	if layout_workbench:
 		var panel_width: float = minf(560.0, maxf(288.0, viewport_size.x * WORKBENCH_WIDTH_RATIO))
-		var card_stack_height := (PRESET_CARD_HEIGHT * WORKBENCH_CARD_COUNT) + WORKBENCH_CARD_GAP + (WORKBENCH_INNER_MARGIN * 2.0) + WORKBENCH_CARD_OVERSCAN
+		var card_count := maxf(1.0, float(layout_manager.get_preset_options().size()))
+		var card_stack_height := (PRESET_CARD_HEIGHT * card_count) + ((card_count - 1.0) * WORKBENCH_CARD_GAP) + (WORKBENCH_INNER_MARGIN * 2.0) + WORKBENCH_CARD_OVERSCAN
 		var panel_height: float = minf(viewport_size.y - (side_margin * 2.0), card_stack_height)
 		var default_top := maxf(side_margin, viewport_size.y * 0.05)
 		var baseline_height := minf(viewport_size.y - (side_margin * 2.0), viewport_size.y * WORKBENCH_BASE_HEIGHT_RATIO)
@@ -287,10 +291,11 @@ func _setup_zone_overlay(zone: Control, preview: TextureRect, view_index: int) -
 	button.anchor_bottom = 0.0
 	var initial_icon_size := maxf(PANEL_SWITCH_HIT_TARGET_MIN, layout_control.custom_minimum_size.x * PANEL_SWITCH_ICON_SIZE_RATIO)
 	var side_margin := _compute_panel_switch_side_margin(layout_control.custom_minimum_size.x, initial_icon_size)
+	var initial_top_margin := _panel_switch_top_margin()
 	button.offset_left = -side_margin - initial_icon_size
-	button.offset_top = PANEL_SWITCH_TOP_MARGIN
+	button.offset_top = initial_top_margin
 	button.offset_right = -side_margin
-	button.offset_bottom = PANEL_SWITCH_TOP_MARGIN + initial_icon_size
+	button.offset_bottom = initial_top_margin + initial_icon_size
 	var transparent_button_style := _make_style_box(Color(0.0, 0.0, 0.0, 0.0), Color(0.0, 0.0, 0.0, 0.0), 0, 0)
 	button.add_theme_stylebox_override("normal", transparent_button_style)
 	button.add_theme_stylebox_override("hover", transparent_button_style)
@@ -457,10 +462,14 @@ func _create_layout_card(option: Dictionary) -> Button:
 	stack.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(stack)
 
+	var preview_orientation := _preview_orientation_for_option(option)
+	var preview_size := _preview_size_for_orientation(preview_orientation)
+	var preview_frame_size := _preview_frame_size_for_orientation(preview_orientation)
+
 	var preview_frame := PanelContainer.new()
 	preview_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	preview_frame.clip_contents = true
-	preview_frame.custom_minimum_size = PRESET_PREVIEW_FRAME_SIZE
+	preview_frame.custom_minimum_size = preview_frame_size
 	preview_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	preview_frame.add_theme_stylebox_override(
 		"panel",
@@ -479,24 +488,59 @@ func _create_layout_card(option: Dictionary) -> Button:
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	preview.custom_minimum_size = Vector2(PRESET_PREVIEW_SIZE.x, PRESET_PREVIEW_SIZE.y)
-	preview.texture = _build_layout_preview_texture(preset_id)
+	preview.custom_minimum_size = Vector2(preview_size.x, preview_size.y)
+	preview.texture = _build_layout_preview_texture(preset_id, preview_size, preview_orientation)
 	preview_center.add_child(preview)
 
 	return button
 
-func _build_layout_preview_texture(preset_id: String) -> Texture2D:
+func _build_layout_preview_texture(preset_id: String, preview_size: Vector2i, preview_orientation: String) -> Texture2D:
 	var previous_preset := layout_manager.get_preset()
 	layout_manager.set_preset(preset_id)
-	var preview_size := Vector2(float(PRESET_PREVIEW_SIZE.x), float(PRESET_PREVIEW_SIZE.y))
-	var snapshot := layout_manager.build_snapshot(preview_size, true)
+	# Picker orientation is a preview-card presentation hint only. Preview content
+	# always comes from the portrait-authored canonical layout source.
+	var snapshot_viewport_size := PRESET_PREVIEW_CANONICAL_SIZE
+	var snapshot_size_float := Vector2(float(snapshot_viewport_size.x), float(snapshot_viewport_size.y))
+	var snapshot := layout_manager.build_snapshot(snapshot_size_float, true)
 	layout_manager.set_preset(previous_preset)
 
-	var image := Image.create(PRESET_PREVIEW_SIZE.x, PRESET_PREVIEW_SIZE.y, false, Image.FORMAT_RGBA8)
+	var image := Image.create(snapshot_viewport_size.x, snapshot_viewport_size.y, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0.054902, 0.07451, 0.094118, 1.0))
-	_draw_slots_on_image(image, snapshot.get("slots", []), PRESET_PREVIEW_SIZE)
-	_draw_separators_on_image(image, snapshot.get("separators", []), PRESET_PREVIEW_SIZE)
+	_draw_slots_on_image(image, snapshot.get("slots", []), snapshot_viewport_size)
+	_draw_separators_on_image(image, snapshot.get("separators", []), snapshot_viewport_size)
+	if preview_orientation == "landscape":
+		# Rotate preview content for landscape cards so the implied portrait mapping
+		# matches the live-feed top-left inset expectation.
+		image = _rotate_image_clockwise(image)
+		image.flip_x()
+		image.flip_y()
+
 	return ImageTexture.create_from_image(image)
+
+func _preview_orientation_for_option(option: Dictionary) -> String:
+	var orientation := String(option.get("preview_orientation", "portrait"))
+	if orientation == "landscape":
+		return orientation
+	return "portrait"
+
+func _preview_size_for_orientation(preview_orientation: String) -> Vector2i:
+	if preview_orientation == "landscape":
+		return PRESET_PREVIEW_LANDSCAPE_SIZE
+	return PRESET_PREVIEW_PORTRAIT_SIZE
+
+func _preview_frame_size_for_orientation(preview_orientation: String) -> Vector2:
+	if preview_orientation == "landscape":
+		return PRESET_PREVIEW_LANDSCAPE_FRAME_SIZE
+	return PRESET_PREVIEW_PORTRAIT_FRAME_SIZE
+
+func _rotate_image_clockwise(source: Image) -> Image:
+	var src_width := source.get_width()
+	var src_height := source.get_height()
+	var rotated := Image.create(src_height, src_width, false, source.get_format())
+	for y in range(src_height):
+		for x in range(src_width):
+			rotated.set_pixel(src_height - 1 - y, x, source.get_pixel(x, y))
+	return rotated
 
 func _draw_slots_on_image(image: Image, slots: Array, canvas_size: Vector2i) -> void:
 	for slot in slots:
@@ -711,6 +755,9 @@ func _compute_panel_switch_side_margin(base_size: float, switch_size: float) -> 
 	var legacy_center_offset := PANEL_SWITCH_BASE_SIDE_MARGIN + (legacy_size * 0.5)
 	return maxf(0.0, legacy_center_offset - (switch_size * 0.5))
 
+func _panel_switch_top_margin() -> float:
+	return PANEL_SWITCH_TOP_MARGIN + PANEL_SWITCH_EXTRA_TOP_MARGIN
+
 func _update_panel_switch_control_layout(view_index: int) -> void:
 	var button: Button = panel_switch_buttons.get(view_index)
 	if not button:
@@ -724,11 +771,12 @@ func _update_panel_switch_control_layout(view_index: int) -> void:
 	var side_margin := _compute_panel_switch_side_margin(base_size, switch_size)
 	var zone: Control = primary_zone if view_index == 0 else secondary_zone
 	var target_center_y := layout_control.global_position.y + (layout_control.size.y * 0.5)
-	var offset_top := PANEL_SWITCH_TOP_MARGIN
+	var base_top_margin := _panel_switch_top_margin()
+	var offset_top := base_top_margin
 	if zone:
 		var proposed_top := target_center_y - zone.global_position.y - (switch_size * 0.5)
-		var max_top := maxf(PANEL_SWITCH_TOP_MARGIN, zone.size.y - switch_size - PANEL_SWITCH_TOP_MARGIN)
-		offset_top = clampf(proposed_top, PANEL_SWITCH_TOP_MARGIN, max_top)
+		var max_top := maxf(base_top_margin, zone.size.y - switch_size - base_top_margin)
+		offset_top = clampf(proposed_top, base_top_margin, max_top)
 
 	button.offset_left = -side_margin - switch_size
 	button.offset_top = offset_top
@@ -940,22 +988,16 @@ func _sort_device_meta(a: Dictionary, b: Dictionary) -> bool:
 		return String(a.get("name", "")).nocasecmp_to(String(b.get("name", ""))) < 0
 	return a_role < b_role
 
-func _default_role_for_view(view_index: int) -> String:
-	var preset_id := layout_manager.get_preset()
-	if preset_id == "include_photographer":
-		if view_index == 1:
-			return "front"
-		return "main"
-	if view_index == 1:
-		return "tele"
-	return "main"
-
 func _priority_roles_for_view(view_index: int) -> PackedStringArray:
 	var preset_id := layout_manager.get_preset()
 	if preset_id == "include_photographer":
 		if view_index == 1:
 			return PackedStringArray(["front", "main", "tele", "ultra", "other"])
 		return PackedStringArray(["main", "tele", "ultra", "front", "other"])
+	if preset_id == "wide inset":
+		if view_index == 1:
+			return PackedStringArray(["ultra", "main", "tele", "front", "other"])
+		return PackedStringArray(["main", "ultra", "tele", "front", "other"])
 	if view_index == 1:
 		return PackedStringArray(["tele", "main", "ultra", "front", "other"])
 	return PackedStringArray(["main", "tele", "ultra", "front", "other"])
@@ -988,18 +1030,20 @@ func _is_multicam_active() -> bool:
 func _apply_default_devices_for_active_layout() -> void:
 	# EDUCATIONAL:
 	# Defaults are layout-driven so switching presets snaps to expected intent:
-	# include_photographer => main + front, zoomies => main + tele.
+	# include_photographer => main + front, zoomies => main + tele,
+	# wide inset => main + ultra.
 	if panel_device_catalog.is_empty() or not Native or not Native.has_method("set_device"):
 		return
 
-	var primary_id := _find_device_id_by_priority(PackedStringArray([_default_role_for_view(0), "main", "tele", "ultra", "front", "other"]))
+	var primary_id := _find_device_id_by_priority(_priority_roles_for_view(0))
 	if primary_id.is_empty():
 		return
 
 	if _is_multicam_active():
-		var secondary_id := _find_device_id_by_priority(PackedStringArray([_default_role_for_view(1), "tele", "main", "ultra", "front", "other"]), primary_id)
+		var secondary_priority := _priority_roles_for_view(1)
+		var secondary_id := _find_device_id_by_priority(secondary_priority, primary_id)
 		if secondary_id.is_empty():
-			secondary_id = _find_device_id_by_priority(PackedStringArray(["tele", "main", "ultra", "front", "other"]))
+			secondary_id = _find_device_id_by_priority(secondary_priority)
 		_set_panel_device(0, primary_id)
 		if not secondary_id.is_empty():
 			_set_panel_device(1, secondary_id)

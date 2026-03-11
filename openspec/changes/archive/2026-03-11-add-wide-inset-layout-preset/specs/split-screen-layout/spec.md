@@ -1,30 +1,4 @@
-# split-screen-layout Specification
-
-## Purpose
-TBD - created by archiving change implement-split-screen-layout. Update Purpose after archive.
-## Requirements
-### Requirement: Layout Zones
-The application SHALL organize the split-screen surface as active camera panels plus in-view overlays, without reserving a dedicated bottom control strip outside the camera canvas.
-
-#### Scenario: Zoomies zone allocation
-- **GIVEN** `zoomies` is active
-- **WHEN** the layout is constructed
-- **THEN** the two stacked camera panels consume the full camera viewing area.
-
-#### Scenario: Include Photographer zone allocation
-- **GIVEN** `include_photographer` is active
-- **WHEN** the layout is constructed
-- **THEN** the base panel consumes the full camera viewing area.
-- **AND** the inset remains overlaid within the base panel bounds.
-
-### Requirement: Minimalist Styling
-The UI SHALL use a high-contrast, minimalist color palette (White/Light Gray) without gradients or decorative animations.
-
-#### Scenario: Background Color
-- **GIVEN** the application starts
-- **WHEN** the UI backgrounds are rendered
-- **THEN** they appear as solid flat colors (e.g., white or light gray).
-
+## MODIFIED Requirements
 ### Requirement: Viewer Control Overlay
 Each active camera panel SHALL expose a top-right camera cycle control and a temporary camera label feedback surface.
 
@@ -45,22 +19,6 @@ Each active camera panel SHALL expose a top-right camera cycle control and a tem
 - **WHEN** feedback is displayed
 - **THEN** a camera label (for example `front`, `main`, `tele`, `ultra`, `1x`, or `0.5x`) appears for a short duration.
 - **AND** the label auto-hides without additional user input.
-
-### Requirement: Three-Layer Split-Screen Composition
-The application SHALL compose the split-screen scene using three ordered layers: a base camera feed layer, a HUD overlay layer, and an FX overlay layer.
-
-#### Scenario: Layer Order
-- **GIVEN** the split-screen scene is active
-- **WHEN** the UI is rendered
-- **THEN** the top and bottom camera feeds are drawn in the base layer.
-- **AND** HUD controls are drawn above the camera feeds.
-- **AND** FX visuals are drawn above the HUD.
-
-#### Scenario: Base Layer Camera Ownership
-- **GIVEN** dual-stream or fallback mode is active
-- **WHEN** camera textures update
-- **THEN** the camera textures remain attached to base-layer viewer nodes.
-- **AND** moving controls to HUD/FX does not change camera routing behavior.
 
 ### Requirement: Layout Presets
 The application SHALL provide exactly three selectable layout presets in v1: `include_photographer`, `zoomies`, and `wide inset`, while keeping those IDs internal to implementation.
@@ -97,18 +55,3 @@ The application SHALL provide exactly three selectable layout presets in v1: `in
 - **WHEN** the picker renders
 - **THEN** layout options are shown as visual-only cards without layout text labels.
 - **AND** internal IDs (`include_photographer`, `zoomies`, `wide inset`) are not exposed in UI text.
-
-### Requirement: Panel Borders
-Each active camera panel SHALL render a thin, dull-white border around its perimeter.
-
-#### Scenario: Border visibility in zoomies
-- **GIVEN** `zoomies` is active
-- **WHEN** the panels are rendered
-- **THEN** both stacked panels show a visible thin dull-white border.
-
-#### Scenario: Border visibility in include photographer
-- **GIVEN** `include_photographer` is active
-- **WHEN** the base and inset panels are rendered
-- **THEN** both panels show a visible thin dull-white border.
-- **AND** the inset border follows the inset's rounded corners.
-

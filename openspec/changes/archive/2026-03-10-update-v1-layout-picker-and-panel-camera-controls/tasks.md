@@ -21,6 +21,6 @@
 - [x] 4.2 Ensure inset borders and rounded corners remain visually clean during live preview.
 
 ## 5. Validation
-- [ ] 5.1 Verify both layouts preserve independent per-panel pinch-to-zoom behavior.
-- [ ] 5.2 Verify panel camera switching updates only the targeted panel and displays the temporary label.
-- [ ] 5.3 Verify layout picker size and proportions match the intended large-card v1 presentation on supported iPhone sizes.
+- [x] 5.1 Verify both layouts preserve independent per-panel pinch-to-zoom behavior.
+- [x] 5.2 Verify panel camera switching updates only the targeted panel and displays the temporary label.
+- [x] 5.3 Verify layout picker size and proportions match the intended large-card v1 presentation on supported iPhone sizes.

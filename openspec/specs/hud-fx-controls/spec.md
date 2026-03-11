@@ -44,6 +44,25 @@ The system SHALL show side controls on the HUD row: a bottom-left thumbnail cont
 - **AND** the side controls use approximately 5% horizontal screen margins.
 - **AND** the control row baseline is approximately 10% from the bottom edge.
 
+#### Scenario: Enlarged Layout Picker Presentation
+- **GIVEN** the layout control is visible
+- **WHEN** the user opens the layout picker
+- **THEN** a large rounded popup appears using card-like proportions that prioritize preview familiarity.
+- **AND** the popup occupies a large presentation state in v1 (approximately 72-88% of screen height).
+- **AND** three layout options are shown: `include_photographer`, `zoomies`, and `wide inset`.
+
+#### Scenario: Low-noise layout chooser content
+- **GIVEN** the layout picker is open
+- **WHEN** the picker content is rendered
+- **THEN** selection is driven by large visual cards with colored layout previews.
+- **AND** "future" tabs/options and non-essential helper text are not shown.
+
+#### Scenario: Landscape wide inset preview card
+- **GIVEN** the layout picker is open
+- **WHEN** the `wide inset` preset card is shown
+- **THEN** its preview canvas is rendered in landscape orientation to reflect the preset composition.
+- **AND** this card orientation behavior is preview-only and does not change live feed layout geometry.
+
 ### Requirement: Thumbnail Processing Feedback
 The system SHALL provide thumbnail processing feedback after shutter tap via a short pulse animation with at least 560 ms visible duration, without invoking capture or photo-library actions.
 

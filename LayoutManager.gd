@@ -3,6 +3,7 @@ class_name LayoutManager
 
 const PRESET_ZOOMIES := "zoomies"
 const PRESET_INCLUDE_PHOTOGRAPHER := "include_photographer"
+const PRESET_WIDE_INSET := "wide inset"
 const LAYOUT_VERSION := 1
 const DEFAULT_SEPARATOR_COLOR := Color(1.0, 1.0, 1.0, 0.22)
 const DEFAULT_PANEL_BORDER_COLOR := Color(0.917647, 0.929412, 0.941176, 0.62)
@@ -10,11 +11,18 @@ const DEFAULT_PANEL_BORDER_WIDTH_PX := 2.0
 const PRESET_OPTIONS := [
 	{
 		"id": PRESET_INCLUDE_PHOTOGRAPHER,
-		"title": "Include Photographer"
+		"title": "Include Photographer",
+		"preview_orientation": "portrait"
 	},
 	{
 		"id": PRESET_ZOOMIES,
-		"title": "Zoomies"
+		"title": "Zoomies",
+		"preview_orientation": "portrait"
+	},
+	{
+		"id": PRESET_WIDE_INSET,
+		"title": "Wide Inset",
+		"preview_orientation": "landscape"
 	}
 ]
 
@@ -66,6 +74,44 @@ func build_snapshot(viewport_size: Vector2, has_secondary_stream: bool) -> Dicti
 				"z_index": 10,
 				"fallback_policy": "duplicate_primary",
 				"default_camera_role": "front",
+				"corner_radius_px": inset_corner_radius_px,
+				"border_width_px": DEFAULT_PANEL_BORDER_WIDTH_PX,
+				"border_color": DEFAULT_PANEL_BORDER_COLOR,
+				"omit_outer_border_edges": true
+			})
+		PRESET_WIDE_INSET:
+			# EDUCATIONAL:
+			# The inset keeps a 6:18 width:height shape in screen space (long side
+			# vertical). Because
+			# normalized coordinates are axis-relative, we derive normalized height from
+			# the current viewport aspect ratio so the pixel-space inset stays 6:18.
+			# Reduce inset footprint by ~33% from the previous wide-inset size.
+			var inset_width_normalized := 0.308
+			var inset_height_normalized := inset_width_normalized * (viewport_size.x / maxf(1.0, viewport_size.y)) * (18.0 / 6.0)
+			inset_height_normalized = clampf(inset_height_normalized, 0.22, 0.62)
+			var inset_margin_x := 0.045
+			var inset_margin_top := 0.055
+			var inset_y := inset_margin_top
+			var inset_corner_radius_px := clampf(viewport_size.y * 0.028, 10.0, 22.0)
+			slots.append({
+				"id": "slot_primary_background",
+				"stream_id": "primary",
+				"rect": Rect2(0.0, 0.0, 1.0, 1.0),
+				"z_index": 0,
+				"fallback_policy": "duplicate_primary",
+				"default_camera_role": "main",
+				"corner_radius_px": 0.0,
+				"border_width_px": DEFAULT_PANEL_BORDER_WIDTH_PX,
+				"border_color": DEFAULT_PANEL_BORDER_COLOR,
+				"omit_outer_border_edges": true
+			})
+			slots.append({
+				"id": "slot_secondary_wide_inset",
+				"stream_id": "secondary",
+				"rect": Rect2(inset_margin_x, inset_y, inset_width_normalized, inset_height_normalized),
+				"z_index": 10,
+				"fallback_policy": "duplicate_primary",
+				"default_camera_role": "ultra",
 				"corner_radius_px": inset_corner_radius_px,
 				"border_width_px": DEFAULT_PANEL_BORDER_WIDTH_PX,
 				"border_color": DEFAULT_PANEL_BORDER_COLOR,
