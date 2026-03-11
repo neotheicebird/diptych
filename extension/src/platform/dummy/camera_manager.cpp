@@ -204,3 +204,7 @@ void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
 void CameraManager::open_photo_library() {
     // Dummy: no-op.
 }
+
+void CameraManager::open_latest_saved_photo() {
+    // Dummy: no-op.
+}

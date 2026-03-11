@@ -39,6 +39,7 @@ public:
     void set_layout_snapshot(const Dictionary &layout_snapshot);
     void capture_layout_image(const Dictionary &layout_snapshot);
     void open_photo_library();
+    void open_latest_saved_photo();
 
 private:
     Impl* impl;

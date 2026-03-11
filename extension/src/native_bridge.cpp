@@ -137,6 +137,12 @@ void NativeBridge::open_photo_library() {
 	}
 }
 
+void NativeBridge::open_latest_saved_photo() {
+	if (camera) {
+		camera->open_latest_saved_photo();
+	}
+}
+
 // EDUCATIONAL:
 // This static method is called by Godot when the class is registered.
 // We use ClassDB::bind_method to map the string definition of the function (D_METHOD)
@@ -161,6 +167,7 @@ void NativeBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_layout_snapshot", "layout_snapshot"), &NativeBridge::set_layout_snapshot);
 	ClassDB::bind_method(D_METHOD("capture_layout_image", "layout_snapshot"), &NativeBridge::capture_layout_image);
 	ClassDB::bind_method(D_METHOD("open_photo_library"), &NativeBridge::open_photo_library);
+	ClassDB::bind_method(D_METHOD("open_latest_saved_photo"), &NativeBridge::open_latest_saved_photo);
 
 	ADD_SIGNAL(MethodInfo("permission_granted"));
 	ADD_SIGNAL(MethodInfo("image_save_started"));

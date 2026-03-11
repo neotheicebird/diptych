@@ -60,6 +60,7 @@ public:
 	void set_layout_snapshot(Dictionary layout_snapshot);
 	void capture_layout_image(Dictionary layout_snapshot);
 	void open_photo_library();
+	void open_latest_saved_photo();
 };
 
 #endif // NATIVE_BRIDGE_H

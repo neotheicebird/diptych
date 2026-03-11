@@ -13,8 +13,10 @@
 #include <godot_cpp/variant/vector2i.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <vector>
 
 using namespace godot;
@@ -33,6 +35,10 @@ struct SlotSpec {
 	Rect2 normalized_rect;
 	int z_index = 0;
 	String fallback_policy;
+	float corner_radius_px = 0.0f;
+	float border_width_px = 0.0f;
+	Color border_color = Color(1.0, 1.0, 1.0, 0.0);
+	bool omit_outer_border_edges = false;
 };
 
 struct SeparatorSpec {
@@ -44,6 +50,13 @@ struct ParsedLayoutSnapshot {
 	Vector2i output_size = Vector2i(1170, 2532);
 	std::vector<SlotSpec> slots;
 	std::vector<SeparatorSpec> separators;
+};
+
+struct SlotBorderWidths {
+	CGFloat left = 0.0;
+	CGFloat top = 0.0;
+	CGFloat right = 0.0;
+	CGFloat bottom = 0.0;
 };
 
 static Vector2i extract_output_size(const Dictionary &layout_snapshot) {
@@ -85,6 +98,10 @@ static ParsedLayoutSnapshot parse_layout_snapshot(const Dictionary &layout_snaps
 			slot.normalized_rect = slot_dict["rect"];
 			slot.z_index = (int)slot_dict.get("z_index", 0);
 			slot.fallback_policy = slot_dict.get("fallback_policy", String("duplicate_primary"));
+			slot.corner_radius_px = (float)(double)slot_dict.get("corner_radius_px", 0.0);
+			slot.border_width_px = (float)(double)slot_dict.get("border_width_px", 0.0);
+			slot.border_color = slot_dict.get("border_color", Color(1.0, 1.0, 1.0, 0.0));
+			slot.omit_outer_border_edges = (bool)slot_dict.get("omit_outer_border_edges", false);
 			parsed.slots.push_back(slot);
 		}
 	}
@@ -122,6 +139,105 @@ static CGRect normalized_rect_to_pixels(const Rect2 &normalized_rect, const Vect
 	// contexts draw in bottom-left coordinates by default.
 	CGFloat y = ((CGFloat)output_size.y) - (normalized_rect.position.y * output_size.y) - h;
 	return CGRectIntegral(CGRectMake(x, y, MAX(w, 1.0), MAX(h, 1.0)));
+}
+
+static SlotBorderWidths resolve_slot_border_widths(const SlotSpec &slot) {
+	SlotBorderWidths widths;
+	CGFloat base_width = MAX(0.0, (CGFloat)slot.border_width_px);
+	widths.left = base_width;
+	widths.top = base_width;
+	widths.right = base_width;
+	widths.bottom = base_width;
+
+	if (slot.omit_outer_border_edges) {
+		const CGFloat epsilon = 0.001;
+		const Rect2 rect = slot.normalized_rect;
+		if ((CGFloat)rect.position.x <= epsilon) {
+			widths.left = 0.0;
+		}
+		if ((CGFloat)rect.position.y <= epsilon) {
+			widths.top = 0.0;
+		}
+		if ((CGFloat)(rect.position.x + rect.size.x) >= 1.0 - epsilon) {
+			widths.right = 0.0;
+		}
+		if ((CGFloat)(rect.position.y + rect.size.y) >= 1.0 - epsilon) {
+			widths.bottom = 0.0;
+		}
+	}
+
+	return widths;
+}
+
+static bool has_visible_border(const SlotBorderWidths &widths) {
+	return widths.left > 0.0 || widths.top > 0.0 || widths.right > 0.0 || widths.bottom > 0.0;
+}
+
+static bool is_uniform_border(const SlotBorderWidths &widths) {
+	if (!has_visible_border(widths)) {
+		return false;
+	}
+	const CGFloat epsilon = 0.01;
+	if (fabs(widths.left - widths.top) > epsilon) {
+		return false;
+	}
+	if (fabs(widths.left - widths.right) > epsilon) {
+		return false;
+	}
+	if (fabs(widths.left - widths.bottom) > epsilon) {
+		return false;
+	}
+	return true;
+}
+
+static void draw_slot_border(CGContextRef context, const SlotSpec &slot, const CGRect &destination_rect) {
+	if (!context || CGRectIsEmpty(destination_rect) || slot.border_color.a <= 0.0f || slot.border_width_px <= 0.0f) {
+		return;
+	}
+
+	SlotBorderWidths widths = resolve_slot_border_widths(slot);
+	if (!has_visible_border(widths)) {
+		return;
+	}
+
+	CGContextSetRGBStrokeColor(context, slot.border_color.r, slot.border_color.g, slot.border_color.b, slot.border_color.a);
+	CGContextSetRGBFillColor(context, slot.border_color.r, slot.border_color.g, slot.border_color.b, slot.border_color.a);
+
+	if (is_uniform_border(widths)) {
+		CGFloat stroke_width = widths.left;
+		CGRect stroke_rect = CGRectInset(destination_rect, stroke_width * 0.5, stroke_width * 0.5);
+		if (stroke_rect.size.width <= 0.0 || stroke_rect.size.height <= 0.0) {
+			return;
+		}
+		CGFloat max_radius = MIN(stroke_rect.size.width, stroke_rect.size.height) * 0.5;
+		CGFloat radius = MIN(MAX((CGFloat)slot.corner_radius_px, 0.0), max_radius);
+		UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:stroke_rect cornerRadius:radius];
+		CGContextSaveGState(context);
+		CGContextSetLineWidth(context, stroke_width);
+		CGContextAddPath(context, path.CGPath);
+		CGContextStrokePath(context);
+		CGContextRestoreGState(context);
+		return;
+	}
+
+	if (widths.left > 0.0) {
+		CGContextFillRect(context, CGRectMake(destination_rect.origin.x, destination_rect.origin.y, widths.left, destination_rect.size.height));
+	}
+	if (widths.right > 0.0) {
+		CGContextFillRect(
+			context,
+			CGRectMake(destination_rect.origin.x + destination_rect.size.width - widths.right, destination_rect.origin.y, widths.right, destination_rect.size.height)
+		);
+	}
+	if (widths.top > 0.0) {
+		CGContextFillRect(
+			context,
+			CGRectMake(destination_rect.origin.x, destination_rect.origin.y + destination_rect.size.height - widths.top, destination_rect.size.width, widths.top)
+		);
+	}
+	if (widths.bottom > 0.0) {
+		CGContextFillRect(context, CGRectMake(destination_rect.origin.x, destination_rect.origin.y, destination_rect.size.width, widths.bottom));
+	}
 }
 
 static CGImageRef create_cgimage_from_rgba_frame(const FrameSnapshot &frame) {
@@ -258,6 +374,7 @@ struct CameraManager::Impl {
     std::function<void()> image_save_started_callback;
     std::function<void(const PackedByteArray &)> image_save_finished_callback;
     Dictionary layout_snapshot;
+    std::string latest_saved_asset_local_identifier;
 
     /**
      * process_sample_buffer
@@ -895,7 +1012,19 @@ void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
                 if (!source_image) {
                     continue;
                 }
-                draw_aspect_fill_image(context, source_image, destination_rect);
+                CGFloat max_radius = MIN(destination_rect.size.width, destination_rect.size.height) * 0.5;
+                CGFloat clip_radius = MIN(MAX((CGFloat)slot.corner_radius_px, 0.0), max_radius);
+                if (clip_radius > 0.5) {
+                    UIBezierPath *clip_path = [UIBezierPath bezierPathWithRoundedRect:destination_rect cornerRadius:clip_radius];
+                    CGContextSaveGState(context);
+                    CGContextAddPath(context, clip_path.CGPath);
+                    CGContextClip(context);
+                    draw_aspect_fill_image(context, source_image, destination_rect);
+                    CGContextRestoreGState(context);
+                } else {
+                    draw_aspect_fill_image(context, source_image, destination_rect);
+                }
+                draw_slot_border(context, slot, destination_rect);
                 CGImageRelease(source_image);
             }
 
@@ -933,13 +1062,21 @@ void CameraManager::capture_layout_image(const Dictionary &layout_snapshot) {
 
             CGImageRelease(composed_cgimage);
 
+            __block NSString *created_asset_local_identifier = nil;
             [[PHPhotoLibrary sharedPhotoLibrary] performChanges:^{
-                [PHAssetChangeRequest creationRequestForAssetFromImage:composed_image];
+                PHAssetChangeRequest *asset_change_request = [PHAssetChangeRequest creationRequestForAssetFromImage:composed_image];
+                PHObjectPlaceholder *placeholder = asset_change_request.placeholderForCreatedAsset;
+                if (placeholder.localIdentifier.length > 0) {
+                    created_asset_local_identifier = [placeholder.localIdentifier copy];
+                }
             } completionHandler:^(BOOL success, NSError * _Nullable error) {
                 if (!success && error) {
                     UtilityFunctions::print("CameraManager: Failed to save image to library.");
                 }
                 dispatch_async(dispatch_get_main_queue(), ^{
+                    if (success && created_asset_local_identifier.length > 0) {
+                        impl->latest_saved_asset_local_identifier = std::string(created_asset_local_identifier.UTF8String);
+                    }
                     if (impl->image_save_finished_callback) {
                         impl->image_save_finished_callback(thumbnail_bytes);
                     }
@@ -953,8 +1090,17 @@ void CameraManager::open_photo_library() {
     dispatch_async(dispatch_get_main_queue(), ^{
         NSURL *photos_url = [NSURL URLWithString:@"photos-redirect://"];
         UIApplication *application = [UIApplication sharedApplication];
-        if ([application canOpenURL:photos_url]) {
-            [application openURL:photos_url options:@{} completionHandler:nil];
-        }
+        [application openURL:photos_url options:@{} completionHandler:nil];
+    });
+}
+
+void CameraManager::open_latest_saved_photo() {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIApplication *application = [UIApplication sharedApplication];
+        // Stability-first fallback: always open the Photos library root.
+        // Asset-specific deep links are not reliable across iOS versions and
+        // can produce unstable behavior on some devices.
+        NSURL *photos_url = [NSURL URLWithString:@"photos-redirect://"];
+        [application openURL:photos_url options:@{} completionHandler:nil];
     });
 }
